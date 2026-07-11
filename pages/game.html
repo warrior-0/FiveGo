@@ -97,6 +97,7 @@
         });
 
         document.getElementById('leaveBtn').addEventListener('click', (event) => {
+
             event.preventDefault();
 
             if (roomId && currentState?.phase !== 'finished') {
@@ -121,7 +122,6 @@
             });
             setTimeout(goLobby, 1200);
         }
-
 
         window.addEventListener('pagehide', () => {
             if (roomId && currentState?.phase !== 'finished') {

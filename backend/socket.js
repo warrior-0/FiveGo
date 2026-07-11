@@ -51,6 +51,7 @@ function removeFromWaiting(socket) {
     }
 }
 
+
 function removeUserFromWaiting(userId) {
     let index = waiting.findIndex((entry) => Number(entry.player.user.id) === Number(userId));
 
@@ -96,6 +97,7 @@ function cleanupRoom(roomId) {
 
 async function handlePlayerExit(io, socket, reason = '상대가 방을 나갔습니다.') {
     removeFromWaiting(socket);
+
     if (socket.request.session?.userId) {
         removeUserFromWaiting(socket.request.session.userId);
     }
