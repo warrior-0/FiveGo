@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>프로필</title><link rel="stylesheet" href="../style.css"></head>
+<body>
+<main class="container"><h1>프로필</h1><div id="profileCard" class="card">불러오는 중...</div><a class="button-link" href="lobby.html">로비로</a></main>
+<script src="../js/api.js"></script><script src="../js/main.js"></script>
+<script>
+requireLogin().then(async () => {
+ const { user } = await apiRequest('/api/user/profile');
+ document.getElementById('profileCard').innerHTML = `<p>닉네임: ${user.nickname}</p><p>Elo: ${user.rank_score}</p><p>전적: ${user.wins}승 ${user.losses}패 ${user.draws}무</p>`;
+});
+</script>
+</body></html>

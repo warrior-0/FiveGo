@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>오둑 게임</title><link rel="stylesheet" href="../style.css"></head>
+<body>
+<main class="game-layout"><section class="panel"><h1>오둑</h1><p id="status">매칭 대기 중...</p><p>흑 <span id="blackScore">0</span> : 백 <span id="whiteScore">0</span></p><button id="matchBtn">매칭 시작</button><a class="button-link" href="lobby.html">나가기</a></section><section id="board" class="board" aria-label="13x13 오둑판"></section></main>
+<script src="/socket.io/socket.io.js"></script><script src="../js/api.js"></script><script src="../js/main.js"></script>
+<script>
+const board = document.getElementById('board');
+const socket = io();
+let roomId = null;
+for(let y=0;y<13;y++) for(let x=0;x<13;x++){ const c=document.createElement('button'); c.className='cell'; c.dataset.x=x; c.dataset.y=y; c.addEventListener('click',()=> roomId && socket.emit('placeStone',{roomId,x,y})); board.appendChild(c); }
+requireLogin();
+document.getElementById('matchBtn').addEventListener('click',()=>socket.emit('joinMatch'));
+socket.on('matchFound', data => { roomId=data.roomId; document.getElementById('status').textContent=`${data.color === 'black' ? '흑' : '백'}으로 시작합니다.`; });
+socket.on('gameState', state => {
+ document.getElementById('blackScore').textContent=state.scores.black; document.getElementById('whiteScore').textContent=state.scores.white;
+ document.getElementById('status').textContent=state.winner ? `${state.winner === 'black' ? '흑' : '백'} 승리!` : `${state.turn === 'black' ? '흑' : '백'} 차례`;
+ state.board.flat().forEach((stone,i)=>{ const cell=board.children[i]; cell.className=`cell ${stone || ''}`; });
+});
+socket.on('gameError', msg => alert(msg));
+</script></body></html>
