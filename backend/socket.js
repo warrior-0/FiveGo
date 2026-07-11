@@ -51,6 +51,16 @@ function removeFromWaiting(socket) {
     }
 }
 
+
+function removeUserFromWaiting(userId) {
+    let index = waiting.findIndex((entry) => Number(entry.player.user.id) === Number(userId));
+
+    while (index >= 0) {
+        waiting.splice(index, 1);
+        index = waiting.findIndex((entry) => Number(entry.player.user.id) === Number(userId));
+    }
+}
+
 function pruneWaiting() {
     for (let index = waiting.length - 1; index >= 0; index -= 1) {
         if (!waiting[index].socket.connected) {
@@ -88,6 +98,10 @@ function cleanupRoom(roomId) {
 async function handlePlayerExit(io, socket, reason = '상대가 방을 나갔습니다.') {
     removeFromWaiting(socket);
 
+    if (socket.request.session?.userId) {
+        removeUserFromWaiting(socket.request.session.userId);
+    }
+
     const roomId = socketRooms.get(socket.id);
     if (!roomId) return;
 
@@ -120,7 +134,12 @@ function attachSocket(io) {
                 pruneWaiting();
 
                 const player = await loadUser(socket);
-                const opponent = waiting.shift();
+                removeUserFromWaiting(player.user.id);
+
+                const opponentIndex = waiting.findIndex((entry) => (
+                    entry.socket.connected && Number(entry.player.user.id) !== Number(player.user.id)
+                ));
+                const opponent = opponentIndex >= 0 ? waiting.splice(opponentIndex, 1)[0] : null;
 
                 if (!opponent) {
                     waiting.push({ socket, player });
@@ -145,8 +164,12 @@ function attachSocket(io) {
             }
         });
 
-        socket.on('cancelMatch', () => {
+        socket.on('cancelMatch', (ack) => {
             removeFromWaiting(socket);
+            if (socket.request.session?.userId) {
+                removeUserFromWaiting(socket.request.session.userId);
+            }
+            if (typeof ack === 'function') ack();
         });
 
         socket.on('submitBid', async ({ roomId, bid, sacrificeAugmentId }) => {
@@ -192,8 +215,9 @@ function attachSocket(io) {
             }
         });
 
-        socket.on('leaveRoom', async () => {
+        socket.on('leaveRoom', async (ack) => {
             await handlePlayerExit(io, socket, '상대가 방을 나갔습니다. 매칭을 다시 시작해 주세요.');
+            if (typeof ack === 'function') ack();
         });
 
         socket.on('disconnect', async () => {

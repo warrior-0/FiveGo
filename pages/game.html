@@ -97,21 +97,31 @@
         });
 
         document.getElementById('leaveBtn').addEventListener('click', (event) => {
+
+            event.preventDefault();
+
             if (roomId && currentState?.phase !== 'finished') {
-                event.preventDefault();
-                socket.emit('leaveRoom');
-                setTimeout(() => {
-                    window.location.href = 'lobby.html';
-                }, 100);
+                emitAndGoLobby('leaveRoom');
             } else if (document.getElementById('matchBtn').disabled) {
-                event.preventDefault();
-                socket.emit('cancelMatch');
-                setTimeout(() => {
-                    window.location.href = 'lobby.html';
-                }, 100);
+                emitAndGoLobby('cancelMatch');
+            } else {
+                window.location.href = 'lobby.html';
             }
         });
 
+        function emitAndGoLobby(eventName) {
+            let moved = false;
+            const goLobby = () => {
+                if (moved) return;
+                moved = true;
+                window.location.href = 'lobby.html';
+            };
+
+            socket.timeout(1000).emit(eventName, () => {
+                goLobby();
+            });
+            setTimeout(goLobby, 1200);
+        }
 
         window.addEventListener('pagehide', () => {
             if (roomId && currentState?.phase !== 'finished') {
