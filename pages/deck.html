@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>증강 덱</title><link rel="stylesheet" href="../style.css"></head>
+<body>
+<main class="container wide"><h1>증강 덱</h1><p>게임에 가져갈 증강 5개를 선택하세요.</p><form id="deckForm" class="augment-grid"></form><p id="message"></p><button id="saveDeckBtn">저장</button><a class="button-link" href="lobby.html">로비로</a></main>
+<script src="../js/api.js"></script><script src="../js/main.js"></script>
+<script>
+let selected = new Set();
+requireLogin().then(loadDeck);
+async function loadDeck(){
+ const [{ augments }, { deck }] = await Promise.all([apiRequest('/api/augments'), apiRequest('/api/augments/deck')]);
+ selected = new Set(deck.map(String));
+ const form = document.getElementById('deckForm');
+ form.innerHTML = augments.map(a => `<label class="augment-card"><input type="checkbox" value="${a.id}" ${selected.has(String(a.id))?'checked':''}><strong>${a.name}</strong><span>${a.description}</span></label>`).join('');
+ form.addEventListener('change', e => {
+   if(e.target.type !== 'checkbox') return;
+   if(e.target.checked && form.querySelectorAll('input:checked').length > 5){ e.target.checked=false; alert('증강은 최대 5개까지 선택할 수 있습니다.'); }
+ });
+}
+document.getElementById('saveDeckBtn').addEventListener('click', async () => {
+ const augmentIds = [...document.querySelectorAll('#deckForm input:checked')].map(i => Number(i.value));
+ try { await apiRequest('/api/augments/deck', { method:'POST', body: JSON.stringify({ augmentIds })}); document.getElementById('message').textContent='저장되었습니다.'; }
+ catch(e){ document.getElementById('message').textContent=e.message; }
+});
+</script></body></html>

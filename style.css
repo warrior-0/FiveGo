@@ -124,3 +124,27 @@ button:hover {
     font-size: 14px;
 
 }
+
+.success { color: #176d2d; }
+.error { color: #b00020; }
+.menu, .wide { width: min(720px, 92vw); }
+.button-link { display: block; width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; background: #222; color: white; text-align: center; text-decoration: none; }
+.card { padding: 16px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 16px; }
+.augment-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 16px; }
+.augment-card { display: grid; gap: 6px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
+.game-layout { display: flex; gap: 24px; align-items: flex-start; padding: 24px; }
+.panel { width: 240px; padding: 20px; border-radius: 12px; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+.board { display: grid; grid-template-columns: repeat(13, 34px); grid-template-rows: repeat(13, 34px); padding: 12px; background: #d6a35c; border: 3px solid #6b3d12; }
+.cell { width: 34px; height: 34px; border: 1px solid rgba(0,0,0,0.35); border-radius: 0; background: transparent; position: relative; }
+.cell.black::after, .cell.white::after { content: ''; position: absolute; inset: 4px; border-radius: 50%; }
+.cell.black::after { background: #111; }
+.cell.white::after { background: #f8f8f8; border: 1px solid #aaa; }
+@media (max-width: 760px) { .game-layout { flex-direction: column; } .board { grid-template-columns: repeat(13, 24px); grid-template-rows: repeat(13, 24px); } .cell { width: 24px; height: 24px; } }
+.hidden { display: none; }
+.augment-list { display: grid; gap: 8px; margin: 12px 0; }
+.augment-card.compact { font-size: 13px; }
+.log { margin-top: 12px; padding: 10px; max-height: 180px; overflow-y: auto; background: #f7f7f7; border-radius: 8px; font-size: 13px; }
+.log p { margin: 4px 0; }
+.panel h2 { font-size: 16px; margin: 14px 0 8px; }
+.panel label { display: block; margin-bottom: 8px; }
+.panel select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; }

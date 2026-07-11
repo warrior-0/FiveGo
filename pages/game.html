@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오둑 게임</title>
+    <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+    <main class="game-layout">
+        <section class="panel">
+            <h1>오둑</h1>
+            <p id="status">로그인 확인 중...</p>
+            <p>흑 <span id="blackScore">0</span> : 백 <span id="whiteScore">0</span></p>
+            <p id="myColor">색상: 미정</p>
+
+            <div id="matchPanel">
+                <button id="matchBtn">매칭 시작</button>
+            </div>
+
+            <div id="bidPanel" class="hidden">
+                <h2>흑 입찰</h2>
+                <p>0~4점까지 양보할 수 있습니다. 더 많이 양보한 사람이 흑이 됩니다.</p>
+                <label>양보 점수 <input id="bidInput" type="number" min="0" max="4" value="0"></label>
+                <label>증강 희생 <select id="sacrificeSelect"><option value="">없음</option></select></label>
+                <button id="bidBtn">입찰 제출</button>
+            </div>
+
+            <div id="augmentPanel" class="hidden">
+                <h2>증강 선택</h2>
+                <p id="augmentHelp"></p>
+                <div id="augmentChoices" class="augment-list"></div>
+                <button id="augmentBtn">증강 확정</button>
+            </div>
+
+            <div id="log" class="log"></div>
+            <a class="button-link" href="lobby.html">나가기</a>
+        </section>
+
+        <section id="board" class="board" aria-label="13x13 오둑판"></section>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="../js/api.js"></script>
+    <script src="../js/main.js"></script>
+    <script>
+        const board = document.getElementById('board');
+        const socket = io();
+        let roomId = null;
+        let currentState = null;
+        let mySocketId = null;
+        let myColor = null;
+
+        for (let y = 0; y < 13; y += 1) {
+            for (let x = 0; x < 13; x += 1) {
+                const cell = document.createElement('button');
+                cell.className = 'cell';
+                cell.dataset.x = x;
+                cell.dataset.y = y;
+                cell.addEventListener('click', () => {
+                    if (roomId && currentState?.phase === 'playing') {
+                        socket.emit('placeStone', { roomId, x, y });
+                    }
+                });
+                board.appendChild(cell);
+            }
+        }
+
+        requireLogin().then(() => {
+            document.getElementById('status').textContent = '매칭을 시작하세요.';
+        });
+
+        socket.on('connect', () => {
+            mySocketId = socket.id;
+        });
+
+        document.getElementById('matchBtn').addEventListener('click', () => {
+            socket.emit('joinMatch');
+            document.getElementById('status').textContent = '상대를 기다리는 중...';
+        });
+
+        document.getElementById('bidBtn').addEventListener('click', () => {
+            socket.emit('submitBid', {
+                roomId,
+                bid: Number(document.getElementById('bidInput').value),
+                sacrificeAugmentId: document.getElementById('sacrificeSelect').value || null
+            });
+        });
+
+        document.getElementById('augmentBtn').addEventListener('click', () => {
+            const augmentIds = [...document.querySelectorAll('#augmentChoices input:checked')].map((input) => Number(input.value));
+            socket.emit('selectAugments', { roomId, augmentIds });
+        });
+
+        socket.on('matchFound', (data) => {
+            roomId = data.roomId;
+            document.getElementById('matchPanel').classList.add('hidden');
+        });
+
+        socket.on('gameState', (state) => {
+            currentState = state;
+            myColor = findMyColor(state);
+            renderState(state);
+        });
+
+        socket.on('gameError', (msg) => alert(msg));
+
+        function findMyColor(state) {
+            if (state.players.black?.socketId === mySocketId) return 'black';
+            if (state.players.white?.socketId === mySocketId) return 'white';
+            return null;
+        }
+
+        function mySeat(state) {
+            return Object.values(state.seats).find((seat) => seat.socketId === mySocketId);
+        }
+
+        function renderState(state) {
+            document.getElementById('blackScore').textContent = state.scores.black;
+            document.getElementById('whiteScore').textContent = state.scores.white;
+            document.getElementById('myColor').textContent = `색상: ${myColor ? colorName(myColor) : '입찰 중'}`;
+
+            renderBoard(state.board);
+            renderPanels(state);
+            renderLog(state.log);
+
+            if (state.winner) {
+                document.getElementById('status').textContent = `${colorName(state.winner)} 승리!`;
+            } else if (state.phase === 'bidding') {
+                document.getElementById('status').textContent = '흑 입찰 단계';
+            } else if (state.phase === 'augment-selection') {
+                document.getElementById('status').textContent = '증강 선택 단계';
+            } else if (state.phase === 'playing') {
+                document.getElementById('status').textContent = `${colorName(state.turn)} 차례`;
+            }
+        }
+
+        function renderBoard(boardState) {
+            boardState.flat().forEach((stone, index) => {
+                const cell = board.children[index];
+                cell.className = `cell ${stone || ''}`;
+            });
+        }
+
+        function renderPanels(state) {
+            const bidPanel = document.getElementById('bidPanel');
+            const augmentPanel = document.getElementById('augmentPanel');
+            bidPanel.classList.toggle('hidden', state.phase !== 'bidding');
+            augmentPanel.classList.toggle('hidden', state.phase !== 'augment-selection' || !myColor);
+
+            if (state.phase === 'bidding') {
+                const seat = mySeat(state);
+                const sacrificeSelect = document.getElementById('sacrificeSelect');
+                sacrificeSelect.innerHTML = '<option value="">없음</option>' + seat.choices
+                    .map((augment) => `<option value="${augment.id}">${augment.name} (+1)</option>`)
+                    .join('');
+            }
+
+            if (state.phase === 'augment-selection' && myColor) {
+                const player = state.players[myColor];
+                const selectedBase = myColor === 'black' ? 1 : 2;
+                const required = Math.min(player.choices.length, selectedBase + (player.choices.some((augment) => augment.code === 'extra_choice') ? 1 : 0));
+                document.getElementById('augmentHelp').textContent = `${colorName(myColor)}은 시작 증강 ${required}개를 고릅니다. 나머지는 내 돌이 처음 잡힐 때 발동합니다.`;
+                document.getElementById('augmentChoices').innerHTML = player.choices.map((augment) => `
+                    <label class="augment-card compact">
+                        <input type="checkbox" value="${augment.id}">
+                        <strong>${augment.name}</strong>
+                        <span>${augment.description}</span>
+                    </label>
+                `).join('');
+            }
+        }
+
+        function renderLog(log) {
+            document.getElementById('log').innerHTML = log.map((item) => `<p>${item}</p>`).join('');
+        }
+
+        function colorName(color) {
+            return color === 'black' ? '흑' : '백';
+        }
+    </script>
+</body>
+</html>
