@@ -10,6 +10,7 @@ const {
 
 const waiting = [];
 const games = new Map();
+const socketRooms = new Map();
 
 async function loadUser(socket) {
     const userId = socket.request.session?.userId;
@@ -42,10 +43,28 @@ async function loadUser(socket) {
 }
 
 function removeFromWaiting(socket) {
-    const index = waiting.findIndex((entry) => entry.socket.id === socket.id);
+    let index = waiting.findIndex((entry) => entry.socket.id === socket.id);
 
-    if (index >= 0) {
+    while (index >= 0) {
         waiting.splice(index, 1);
+        index = waiting.findIndex((entry) => entry.socket.id === socket.id);
+    }
+}
+
+function removeUserFromWaiting(userId) {
+    let index = waiting.findIndex((entry) => Number(entry.player.user.id) === Number(userId));
+
+    while (index >= 0) {
+        waiting.splice(index, 1);
+        index = waiting.findIndex((entry) => Number(entry.player.user.id) === Number(userId));
+    }
+}
+
+function pruneWaiting() {
+    for (let index = waiting.length - 1; index >= 0; index -= 1) {
+        if (!waiting[index].socket.connected) {
+            waiting.splice(index, 1);
+        }
     }
 }
 
@@ -66,14 +85,59 @@ async function emitState(io, roomId, game) {
     io.to(roomId).emit('gameState', publicGameState(game));
 }
 
+function cleanupRoom(roomId) {
+    const game = games.get(roomId);
+
+    if (!game) return;
+
+    Object.keys(game.socketToSeat).forEach((socketId) => socketRooms.delete(socketId));
+    games.delete(roomId);
+}
+
+async function handlePlayerExit(io, socket, reason = '상대가 방을 나갔습니다.') {
+    removeFromWaiting(socket);
+    if (socket.request.session?.userId) {
+        removeUserFromWaiting(socket.request.session.userId);
+    }
+
+    const roomId = socketRooms.get(socket.id);
+    if (!roomId) return;
+
+    const game = games.get(roomId);
+    if (!game) {
+        socketRooms.delete(socket.id);
+        return;
+    }
+
+    const color = getColorBySocket(game, socket.id);
+
+    if (color && game.phase === 'playing' && !game.winner) {
+        game.winner = color === 'black' ? 'white' : 'black';
+        game.phase = 'finished';
+        game.log.push(`${game.players[color].user.nickname} 이탈: ${game.winner === 'black' ? '흑' : '백'} 승리`);
+        await emitState(io, roomId, game);
+    } else {
+        io.to(roomId).emit('roomClosed', reason);
+    }
+
+    io.in(roomId).socketsLeave(roomId);
+    cleanupRoom(roomId);
+}
+
 function attachSocket(io) {
     io.on('connection', (socket) => {
         socket.on('joinMatch', async () => {
             try {
                 removeFromWaiting(socket);
+                pruneWaiting();
 
                 const player = await loadUser(socket);
-                const opponent = waiting.shift();
+                removeUserFromWaiting(player.user.id);
+
+                const opponentIndex = waiting.findIndex((entry) => (
+                    entry.socket.connected && Number(entry.player.user.id) !== Number(player.user.id)
+                ));
+                const opponent = opponentIndex >= 0 ? waiting.splice(opponentIndex, 1)[0] : null;
 
                 if (!opponent) {
                     waiting.push({ socket, player });
@@ -85,6 +149,8 @@ function attachSocket(io) {
                 const game = createGame({ socketId: opponent.socket.id, ...opponent.player }, { socketId: socket.id, ...player });
 
                 games.set(roomId, game);
+                socketRooms.set(socket.id, roomId);
+                socketRooms.set(opponent.socket.id, roomId);
                 socket.join(roomId);
                 opponent.socket.join(roomId);
 
@@ -94,6 +160,14 @@ function attachSocket(io) {
             } catch (error) {
                 socket.emit('gameError', error.message);
             }
+        });
+
+        socket.on('cancelMatch', (ack) => {
+            removeFromWaiting(socket);
+            if (socket.request.session?.userId) {
+                removeUserFromWaiting(socket.request.session.userId);
+            }
+            if (typeof ack === 'function') ack();
         });
 
         socket.on('submitBid', async ({ roomId, bid, sacrificeAugmentId }) => {
@@ -139,8 +213,13 @@ function attachSocket(io) {
             }
         });
 
-        socket.on('disconnect', () => {
-            removeFromWaiting(socket);
+        socket.on('leaveRoom', async (ack) => {
+            await handlePlayerExit(io, socket, '상대가 방을 나갔습니다. 매칭을 다시 시작해 주세요.');
+            if (typeof ack === 'function') ack();
+        });
+
+        socket.on('disconnect', async () => {
+            await handlePlayerExit(io, socket, '상대 접속이 끊겼습니다. 매칭을 다시 시작해 주세요.');
         });
     });
 }
