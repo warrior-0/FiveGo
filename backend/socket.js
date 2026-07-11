@@ -10,6 +10,7 @@ const {
 
 const waiting = [];
 const games = new Map();
+const socketRooms = new Map();
 
 async function loadUser(socket) {
     const userId = socket.request.session?.userId;
@@ -66,6 +67,42 @@ async function emitState(io, roomId, game) {
     io.to(roomId).emit('gameState', publicGameState(game));
 }
 
+function cleanupRoom(roomId) {
+    const game = games.get(roomId);
+
+    if (!game) return;
+
+    Object.keys(game.socketToSeat).forEach((socketId) => socketRooms.delete(socketId));
+    games.delete(roomId);
+}
+
+async function handlePlayerExit(io, socket, reason = '상대가 방을 나갔습니다.') {
+    removeFromWaiting(socket);
+
+    const roomId = socketRooms.get(socket.id);
+    if (!roomId) return;
+
+    const game = games.get(roomId);
+    if (!game) {
+        socketRooms.delete(socket.id);
+        return;
+    }
+
+    const color = getColorBySocket(game, socket.id);
+
+    if (color && game.phase === 'playing' && !game.winner) {
+        game.winner = color === 'black' ? 'white' : 'black';
+        game.phase = 'finished';
+        game.log.push(`${game.players[color].user.nickname} 이탈: ${game.winner === 'black' ? '흑' : '백'} 승리`);
+        await emitState(io, roomId, game);
+    } else {
+        io.to(roomId).emit('gameError', reason);
+    }
+
+    io.in(roomId).socketsLeave(roomId);
+    cleanupRoom(roomId);
+}
+
 function attachSocket(io) {
     io.on('connection', (socket) => {
         socket.on('joinMatch', async () => {
@@ -84,6 +121,8 @@ function attachSocket(io) {
                 const game = createGame({ socketId: opponent.socket.id, ...opponent.player }, { socketId: socket.id, ...player });
 
                 games.set(roomId, game);
+                socketRooms.set(socket.id, roomId);
+                socketRooms.set(opponent.socket.id, roomId);
                 socket.join(roomId);
                 opponent.socket.join(roomId);
 
@@ -138,8 +177,12 @@ function attachSocket(io) {
             }
         });
 
-        socket.on('disconnect', () => {
-            removeFromWaiting(socket);
+        socket.on('leaveRoom', async () => {
+            await handlePlayerExit(io, socket, '상대가 방을 나갔습니다. 매칭을 다시 시작해 주세요.');
+        });
+
+        socket.on('disconnect', async () => {
+            await handlePlayerExit(io, socket, '상대 접속이 끊겼습니다. 매칭을 다시 시작해 주세요.');
         });
     });
 }
