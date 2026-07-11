@@ -123,6 +123,7 @@
             setTimeout(goLobby, 1200);
         }
 
+
         window.addEventListener('pagehide', () => {
             if (roomId && currentState?.phase !== 'finished') {
                 socket.emit('leaveRoom');
@@ -210,10 +211,11 @@
 
             if (state.phase === 'augment-selection' && myColor) {
                 const player = state.players[myColor];
+                const availableChoices = player.choices.filter((augment) => augment.id !== player.sacrificeAugmentId);
                 const selectedBase = myColor === 'black' ? 1 : 2;
-                const required = Math.min(player.choices.length, selectedBase + (player.choices.some((augment) => augment.code === 'extra_choice') ? 1 : 0));
-                document.getElementById('augmentHelp').textContent = `${colorName(myColor)}은 활성화 시킬 증강 ${required}개를 고릅니다. 나머지는 내 돌이 처음 잡힌 이후 활성화됩니다.`;
-                document.getElementById('augmentChoices').innerHTML = player.choices.map((augment) => `
+                const required = Math.min(availableChoices.length, selectedBase + (availableChoices.some((augment) => augment.code === 'extra_choice') ? 1 : 0));
+                document.getElementById('augmentHelp').textContent = `${colorName(myColor)}은 활성화 시킬 증강 ${required}개를 고릅니다. 나머지는 내 돌이 처음 잡힐 때 활성화됩니다.`;
+                document.getElementById('augmentChoices').innerHTML = availableChoices.map((augment) => `
                     <label class="augment-card compact">
                         <input type="checkbox" value="${augment.id}" data-required="${required}">
                         <strong>${augment.name}</strong>

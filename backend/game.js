@@ -182,7 +182,9 @@ function submitBid(game, socketId, bid, sacrificeAugmentId = null) {
 function bidPower(seat) {
     const sacrificed = seat.choices.find((augment) => augment.id === seat.sacrificeAugmentId);
     const sacrificeBonus = sacrificed ? 1 : 0;
-    const passiveBonus = seat.choices.reduce((sum, augment) => sum + (AUGMENT_EFFECTS[augment.code]?.bidBonus || 0), 0);
+    const passiveBonus = seat.choices
+        .filter((augment) => augment.id !== seat.sacrificeAugmentId)
+        .reduce((sum, augment) => sum + (AUGMENT_EFFECTS[augment.code]?.bidBonus || 0), 0);
 
     return seat.bid + sacrificeBonus + passiveBonus;
 }
@@ -231,10 +233,11 @@ function selectAugments(game, socketId, selectedAugmentIds) {
 
     const player = game.players[color];
     const selected = selectedAugmentIds.map(Number);
+    const availableChoices = player.choices.filter((augment) => augment.id !== player.sacrificeAugmentId);
     const baseRequired = color === 'black' ? 1 : 2;
-    const hasExtraChoice = player.choices.some((augment) => augment.code === 'extra_choice');
-    const required = Math.min(player.choices.length, baseRequired + (hasExtraChoice ? 1 : 0));
-    const choiceIds = new Set(player.choices.map((augment) => augment.id));
+    const hasExtraChoice = availableChoices.some((augment) => augment.code === 'extra_choice');
+    const required = Math.min(availableChoices.length, baseRequired + (hasExtraChoice ? 1 : 0));
+    const choiceIds = new Set(availableChoices.map((augment) => augment.id));
 
     if (selected.length !== required) {
         throw new Error(`${color === 'black' ? '흑' : '백'}은 증강 ${required}개를 선택해야 합니다.`);
@@ -329,6 +332,7 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
 
     const capturedPlayer = game.players[capturedColor];
     const capturingPlayer = game.players[capturingColor];
+    const activeBeforeCapture = [...capturedPlayer.activeAugments];
     let scoreDelta = capturedCount;
     let skipTurn = false;
 
@@ -341,7 +345,7 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
         capturedPlayer.captureAugments = [];
     }
 
-    for (const augment of capturedPlayer.activeAugments) {
+    for (const augment of activeBeforeCapture) {
         if (capturedPlayer.triggeredAugmentIds.includes(augment.id)) continue;
         if (AUGMENT_EFFECTS[augment.code]?.timing !== 'capture-first') continue;
 
