@@ -114,7 +114,6 @@ function attachSocket(io) {
 
                 if (!opponent) {
                     waiting.push({ socket, player });
-                    socket.emit('gameError', '상대를 기다리는 중입니다.');
                     return;
                 }
 
