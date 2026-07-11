@@ -22,7 +22,11 @@ const corsOptions = {
     origin: process.env.CLIENT_ORIGIN,
     credentials: true
 };
-const io = new Server(server, { cors: corsOptions });
+const io = new Server(server, {
+    cors: corsOptions,
+    pingInterval: 5000,
+    pingTimeout: 5000
+});
 const sessionMiddleware = session({
     secret: process.env.SESSION_SECRET,
     resave: false,
