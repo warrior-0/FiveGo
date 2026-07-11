@@ -1,4 +1,4 @@
-const API_BASE_URL = window.API_BASE_URL || '';
+const API_BASE_URL = https://warrior-0.github.io;
 
 async function apiRequest(path, options = {}) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
