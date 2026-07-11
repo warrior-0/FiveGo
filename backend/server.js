@@ -19,18 +19,18 @@ if (process.env.NODE_ENV === 'production') {
 
 const server = http.createServer(app);
 const corsOptions = {
-    origin: process.env.CLIENT_ORIGIN || true,
+    origin: process.env.CLIENT_ORIGIN,
     credentials: true
 };
 const io = new Server(server, { cors: corsOptions });
 const sessionMiddleware = session({
-    secret: process.env.SESSION_SECRET || 'change-this-secret',
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
         httpOnly: true,
-        sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production'
+        sameSite: 'none',
+        secure: true
     }
 });
 
