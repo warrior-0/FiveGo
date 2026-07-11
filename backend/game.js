@@ -239,18 +239,26 @@ function selectAugments(game, socketId, selectedAugmentIds) {
     }
 
     player.selectedAugmentIds = selected;
-    player.startAugments = player.choices.filter((augment) => selected.includes(augment.id));
-    player.captureAugments = player.choices.filter((augment) => !selected.includes(augment.id) && augment.id !== player.sacrificeAugmentId);
     player.ready = true;
-
-    applyStartAugments(game, color);
     game.log.push(`${color === 'black' ? '흑' : '백'} 증강 선택 완료`);
 
     if (game.players.black.ready && game.players.white.ready) {
+        prepareAugments(game, 'black');
+        prepareAugments(game, 'white');
+        applyStartAugments(game, 'black');
+        applyStartAugments(game, 'white');
         game.phase = 'playing';
         game.log.push('게임을 시작합니다.');
         checkWinner(game);
     }
+}
+
+function prepareAugments(game, color) {
+    const player = game.players[color];
+    const selected = new Set(player.selectedAugmentIds);
+
+    player.startAugments = player.choices.filter((augment) => selected.has(augment.id));
+    player.captureAugments = player.choices.filter((augment) => !selected.has(augment.id) && augment.id !== player.sacrificeAugmentId);
 }
 
 function applyStartAugments(game, color) {
@@ -400,21 +408,32 @@ function placeStone(game, color, x, y) {
 }
 
 function publicGameState(game) {
-    const hideBid = (seat) => seat ? ({
-        ...seat,
-        bid: seat.bid === null ? null : 'submitted'
-    }) : null;
+    const revealBids = game.phase !== 'bidding';
+    const revealAugments = game.phase === 'playing' || game.phase === 'finished';
+    const publicSeat = (seat) => {
+        if (!seat) return null;
+
+        return {
+            ...seat,
+            bid: revealBids || seat.bid === null ? seat.bid : 'submitted',
+            sacrificeAugmentId: revealBids ? seat.sacrificeAugmentId : null,
+            selectedAugmentIds: revealAugments ? seat.selectedAugmentIds : [],
+            startAugments: revealAugments ? seat.startAugments : [],
+            captureAugments: revealAugments ? seat.captureAugments : [],
+            triggeredAugmentIds: revealAugments ? seat.triggeredAugmentIds : []
+        };
+    };
 
     return {
         phase: game.phase,
         board: game.board,
         players: {
-            black: hideBid(game.players.black),
-            white: hideBid(game.players.white)
+            black: publicSeat(game.players.black),
+            white: publicSeat(game.players.white)
         },
         seats: {
-            a: hideBid(game.seats.a),
-            b: hideBid(game.seats.b)
+            a: publicSeat(game.seats.a),
+            b: publicSeat(game.seats.b)
         },
         turn: game.turn,
         scores: game.scores,
