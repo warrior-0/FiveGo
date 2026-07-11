@@ -400,15 +400,18 @@ function placeStone(game, color, x, y) {
 }
 
 function publicGameState(game) {
-    const hideBid = (seat) => ({
+    const hideBid = (seat) => seat ? ({
         ...seat,
         bid: seat.bid === null ? null : 'submitted'
-    });
+    }) : null;
 
     return {
         phase: game.phase,
         board: game.board,
-        players: game.players,
+        players: {
+            black: hideBid(game.players.black),
+            white: hideBid(game.players.white)
+        },
         seats: {
             a: hideBid(game.seats.a),
             b: hideBid(game.seats.b)

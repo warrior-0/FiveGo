@@ -45,7 +45,7 @@
     <script src="../js/main.js"></script>
     <script>
         const board = document.getElementById('board');
-        const socket = io();
+        const socket = io({ withCredentials: true });
         let roomId = null;
         let currentState = null;
         let mySocketId = null;
@@ -76,6 +76,7 @@
 
         document.getElementById('matchBtn').addEventListener('click', () => {
             socket.emit('joinMatch');
+            document.getElementById('matchBtn').disabled = true;
             document.getElementById('status').textContent = '상대를 기다리는 중...';
         });
 
@@ -103,7 +104,10 @@
             renderState(state);
         });
 
-        socket.on('gameError', (msg) => alert(msg));
+        socket.on('gameError', (msg) => {
+            document.getElementById('matchBtn').disabled = false;
+            alert(msg);
+        });
 
         function findMyColor(state) {
             if (state.players.black?.socketId === mySocketId) return 'black';
@@ -131,7 +135,8 @@
             } else if (state.phase === 'augment-selection') {
                 document.getElementById('status').textContent = '증강 선택 단계';
             } else if (state.phase === 'playing') {
-                document.getElementById('status').textContent = `${colorName(state.turn)} 차례`;
+                const turnText = `${colorName(state.turn)} 차례`;
+                document.getElementById('status').textContent = state.turn === myColor ? `${turnText} - 내가 둘 차례` : turnText;
             }
         }
 
@@ -163,13 +168,25 @@
                 document.getElementById('augmentHelp').textContent = `${colorName(myColor)}은 시작 증강 ${required}개를 고릅니다. 나머지는 내 돌이 처음 잡힐 때 발동합니다.`;
                 document.getElementById('augmentChoices').innerHTML = player.choices.map((augment) => `
                     <label class="augment-card compact">
-                        <input type="checkbox" value="${augment.id}">
+                        <input type="checkbox" value="${augment.id}" data-required="${required}">
                         <strong>${augment.name}</strong>
                         <span>${augment.description}</span>
                     </label>
                 `).join('');
             }
         }
+
+        document.getElementById('augmentChoices').addEventListener('change', (event) => {
+            if (event.target.type !== 'checkbox') return;
+
+            const required = Number(event.target.dataset.required || 0);
+            const checked = document.querySelectorAll('#augmentChoices input:checked');
+
+            if (required && checked.length > required) {
+                event.target.checked = false;
+                alert(`시작 증강은 ${required}개만 선택할 수 있습니다.`);
+            }
+        });
 
         function renderLog(log) {
             document.getElementById('log').innerHTML = log.map((item) => `<p>${item}</p>`).join('');
