@@ -1,4 +1,4 @@
-const API_BASE_URL = "https://warrior-0.github.io";
+const API_BASE_URL = "https://fivego.onrender.com";
 
 async function apiRequest(path, options = {}) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
