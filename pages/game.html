@@ -34,18 +34,19 @@
             </div>
 
             <div id="log" class="log"></div>
-            <a class="button-link" href="lobby.html">나가기</a>
+            <a id="leaveBtn" class="button-link" href="lobby.html">나가기</a>
         </section>
 
         <section id="board" class="board" aria-label="13x13 오둑판"></section>
+        <aside id="gameInfo" class="game-info hidden" aria-label="게임 정보"></aside>
     </main>
 
-    <script src="/socket.io/socket.io.js"></script>
     <script src="../js/api.js"></script>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script src="../js/main.js"></script>
     <script>
         const board = document.getElementById('board');
-        const socket = io({ withCredentials: true });
+        const socket = io(API_BASE_URL, { withCredentials: true });
         let roomId = null;
         let currentState = null;
         let mySocketId = null;
@@ -93,6 +94,31 @@
             socket.emit('selectAugments', { roomId, augmentIds });
         });
 
+        document.getElementById('leaveBtn').addEventListener('click', (event) => {
+            if (roomId && currentState?.phase !== 'finished') {
+                event.preventDefault();
+                socket.emit('leaveRoom');
+                setTimeout(() => {
+                    window.location.href = 'lobby.html';
+                }, 100);
+            } else if (document.getElementById('matchBtn').disabled) {
+                event.preventDefault();
+                socket.emit('cancelMatch');
+                setTimeout(() => {
+                    window.location.href = 'lobby.html';
+                }, 100);
+            }
+        });
+
+
+        window.addEventListener('pagehide', () => {
+            if (roomId && currentState?.phase !== 'finished') {
+                socket.emit('leaveRoom');
+            } else if (document.getElementById('matchBtn').disabled) {
+                socket.emit('cancelMatch');
+            }
+        });
+
         socket.on('matchFound', (data) => {
             roomId = data.roomId;
             document.getElementById('matchPanel').classList.add('hidden');
@@ -106,6 +132,7 @@
 
         socket.on('gameError', (msg) => {
             document.getElementById('matchBtn').disabled = false;
+            roomId = null;
             alert(msg);
         });
 
@@ -126,6 +153,7 @@
 
             renderBoard(state.board);
             renderPanels(state);
+            renderGameInfo(state);
             renderLog(state.log);
 
             if (state.winner) {
@@ -176,6 +204,57 @@
             }
         }
 
+        function renderGameInfo(state) {
+            const gameInfo = document.getElementById('gameInfo');
+            const entries = ['black', 'white']
+                .map((color) => renderPlayerInfo(color, state.players[color], state.phase))
+                .filter(Boolean)
+                .join('');
+
+            gameInfo.classList.toggle('hidden', !entries);
+            gameInfo.innerHTML = entries;
+        }
+
+        function renderPlayerInfo(color, player, phase) {
+            if (!player) return '';
+
+            const sacrificed = player.sacrificeAugmentId
+                ? player.choices.find((augment) => augment.id === player.sacrificeAugmentId)
+                : null;
+            const readyText = phase === 'augment-selection'
+                ? `<p>증강 준비: ${player.ready ? '완료' : '대기 중'}</p>`
+                : '';
+            const startAugments = renderAugmentList('활성화 증강', player.activeAugments, player.triggeredAugmentIds);
+            const captureAugments = renderAugmentList(player.reserveActivated ? '활성화 완료된 대기 증강' : '대기 증강', player.reserveAugments, player.triggeredAugmentIds);
+            const sacrificeText = sacrificed ? `<p>희생 증강: ${sacrificed.name}</p>` : '<p>희생 증강: 없음</p>';
+
+            return `
+                <article class="player-info">
+                    <h2>${colorName(color)} - ${player.user.nickname}</h2>
+                    ${readyText}
+                    ${phase === 'bidding' ? '<p>입찰 정보는 양쪽 제출 후 공개됩니다.</p>' : `<p>입찰: ${player.bid ?? 0}</p>${sacrificeText}`}
+                    ${phase === 'playing' || phase === 'finished' ? `${startAugments}${captureAugments}` : '<p>선택 증강은 양쪽 준비 완료 후 공개됩니다.</p>'}
+                </article>
+            `;
+        }
+
+        function renderAugmentList(title, augments, triggeredIds = []) {
+            if (!augments?.length) return `<p>${title}: 없음</p>`;
+
+            return `
+                <div class="augment-status">
+                    <strong>${title}</strong>
+                    ${augments.map((augment) => `
+                        <div class="augment-card compact">
+                            <span>${augment.name}${triggeredIds.includes(augment.id) ? ' (발동됨)' : ''}</span>
+                            <small>${activationTypeName(augment.activationType)}</small>
+                            <small>${augment.description}</small>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
         document.getElementById('augmentChoices').addEventListener('change', (event) => {
             if (event.target.type !== 'checkbox') return;
 
@@ -194,6 +273,12 @@
 
         function colorName(color) {
             return color === 'black' ? '흑' : '백';
+        }
+
+        function activationTypeName(type) {
+            if (type === 'immediate') return '활성화 즉시 발동';
+            if (type === 'manual') return '직접 사용 시 발동';
+            return '조건 만족 시 자동 발동';
         }
     </script>
 </body>

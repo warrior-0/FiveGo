@@ -76,12 +76,15 @@ function shuffle(array) {
 }
 
 function publicAugment(augment) {
+    const timing = AUGMENT_EFFECTS[augment.code]?.timing || 'capture-first';
+
     return {
         id: augment.id,
         code: augment.code,
         name: augment.name,
         description: augment.description || AUGMENT_EFFECTS[augment.code]?.description || '',
-        timing: AUGMENT_EFFECTS[augment.code]?.timing || 'capture-first',
+        timing,
+        activationType: timing === 'start' ? 'immediate' : 'automatic',
         bidBonus: AUGMENT_EFFECTS[augment.code]?.bidBonus || 0
     };
 }
@@ -102,7 +105,10 @@ function createPlayerState({ socketId, user, deck }) {
         selectedAugmentIds: [],
         startAugments: [],
         captureAugments: [],
+        activeAugments: [],
+        reserveAugments: [],
         triggeredAugmentIds: [],
+        reserveActivated: false,
         bid: null,
         sacrificeAugmentId: null,
         ready: false
@@ -239,24 +245,39 @@ function selectAugments(game, socketId, selectedAugmentIds) {
     }
 
     player.selectedAugmentIds = selected;
-    player.startAugments = player.choices.filter((augment) => selected.includes(augment.id));
-    player.captureAugments = player.choices.filter((augment) => !selected.includes(augment.id) && augment.id !== player.sacrificeAugmentId);
     player.ready = true;
-
-    applyStartAugments(game, color);
     game.log.push(`${color === 'black' ? '흑' : '백'} 증강 선택 완료`);
 
     if (game.players.black.ready && game.players.white.ready) {
+        prepareAugments(game, 'black');
+        prepareAugments(game, 'white');
+        applyStartAugments(game, 'black');
+        applyStartAugments(game, 'white');
         game.phase = 'playing';
         game.log.push('게임을 시작합니다.');
         checkWinner(game);
     }
 }
 
+function prepareAugments(game, color) {
+    const player = game.players[color];
+    const selected = new Set(player.selectedAugmentIds);
+
+    player.activeAugments = player.choices.filter((augment) => selected.has(augment.id));
+    player.reserveAugments = player.choices.filter((augment) => !selected.has(augment.id) && augment.id !== player.sacrificeAugmentId);
+    player.startAugments = player.activeAugments;
+    player.captureAugments = player.reserveAugments;
+}
+
 function applyStartAugments(game, color) {
     const player = game.players[color];
+    activateImmediateAugments(game, color, player.activeAugments);
+}
 
-    for (const augment of player.startAugments) {
+function activateImmediateAugments(game, color, augments) {
+    const player = game.players[color];
+
+    for (const augment of augments) {
         if (player.triggeredAugmentIds.includes(augment.id)) continue;
 
         if (augment.code === 'focus') {
@@ -311,8 +332,18 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
     let scoreDelta = capturedCount;
     let skipTurn = false;
 
-    for (const augment of capturedPlayer.captureAugments) {
+    if (!capturedPlayer.reserveActivated && capturedPlayer.reserveAugments.length) {
+        capturedPlayer.reserveActivated = true;
+        capturedPlayer.activeAugments.push(...capturedPlayer.reserveAugments);
+        game.log.push(`${capturedPlayer.user.nickname}의 대기 증강이 활성화되었습니다.`);
+        activateImmediateAugments(game, capturedColor, capturedPlayer.reserveAugments);
+        capturedPlayer.reserveAugments = [];
+        capturedPlayer.captureAugments = [];
+    }
+
+    for (const augment of capturedPlayer.activeAugments) {
         if (capturedPlayer.triggeredAugmentIds.includes(augment.id)) continue;
+        if (AUGMENT_EFFECTS[augment.code]?.timing !== 'capture-first') continue;
 
         capturedPlayer.triggeredAugmentIds.push(augment.id);
 
@@ -400,21 +431,35 @@ function placeStone(game, color, x, y) {
 }
 
 function publicGameState(game) {
-    const hideBid = (seat) => seat ? ({
-        ...seat,
-        bid: seat.bid === null ? null : 'submitted'
-    }) : null;
+    const revealBids = game.phase !== 'bidding';
+    const revealAugments = game.phase === 'playing' || game.phase === 'finished';
+    const publicSeat = (seat) => {
+        if (!seat) return null;
+
+        return {
+            ...seat,
+            bid: revealBids || seat.bid === null ? seat.bid : 'submitted',
+            sacrificeAugmentId: revealBids ? seat.sacrificeAugmentId : null,
+            selectedAugmentIds: revealAugments ? seat.selectedAugmentIds : [],
+            startAugments: revealAugments ? seat.startAugments : [],
+            captureAugments: revealAugments ? seat.captureAugments : [],
+            triggeredAugmentIds: revealAugments ? seat.triggeredAugmentIds : [],
+            activeAugments: revealAugments ? seat.activeAugments : [],
+            reserveAugments: revealAugments ? seat.reserveAugments : [],
+            reserveActivated: revealAugments ? seat.reserveActivated : false
+        };
+    };
 
     return {
         phase: game.phase,
         board: game.board,
         players: {
-            black: hideBid(game.players.black),
-            white: hideBid(game.players.white)
+            black: publicSeat(game.players.black),
+            white: publicSeat(game.players.white)
         },
         seats: {
-            a: hideBid(game.seats.a),
-            b: hideBid(game.seats.b)
+            a: publicSeat(game.seats.a),
+            b: publicSeat(game.seats.b)
         },
         turn: game.turn,
         scores: game.scores,
