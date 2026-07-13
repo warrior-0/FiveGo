@@ -148,6 +148,7 @@ function createGame(playerA, playerB) {
             white: 0
         },
         winner: null,
+        draw: false,
         clock: createClock(),
         log: ['입찰을 진행하세요. 더 많이 점수를 양보한 사람이 흑을 잡습니다.']
     };
@@ -417,6 +418,7 @@ function finishByScore(game) {
         game.log.push(`착수 가능한 포획수가 없어 현재 점수로 정산: 백 승리`);
     } else {
         game.winner = null;
+        game.draw = true;
         game.log.push('착수 가능한 포획수가 없어 현재 점수로 정산: 무승부');
     }
 }
@@ -528,7 +530,7 @@ function spendClockTime(clockEntry, elapsedMs) {
 }
 
 function applyTurnClock(game, now = Date.now()) {
-    if (game.phase !== 'playing' || game.winner || !game.clock.turnStartedAt) return false;
+    if (game.phase !== 'playing' || game.winner || game.draw || !game.clock.turnStartedAt) return false;
 
     const color = game.turn;
     const elapsedMs = now - game.clock.turnStartedAt;
@@ -536,6 +538,7 @@ function applyTurnClock(game, now = Date.now()) {
 
     if (spendClockTime(game.clock[color], elapsedMs)) {
         game.winner = opponent(color);
+        game.draw = false;
         game.phase = 'finished';
         game.clock.turnStartedAt = null;
         game.log.push(`${color === 'black' ? '흑' : '백'} 시간패: ${game.winner === 'black' ? '흑' : '백'} 승리`);
@@ -548,7 +551,7 @@ function applyTurnClock(game, now = Date.now()) {
 function publicClockState(game) {
     const snapshot = JSON.parse(JSON.stringify(game.clock));
 
-    if (game.phase === 'playing' && !game.winner && snapshot.turnStartedAt) {
+    if (game.phase === 'playing' && !game.winner && !game.draw && snapshot.turnStartedAt) {
         const live = { clock: snapshot, turn: game.turn, phase: game.phase, winner: game.winner, log: [] };
         applyTurnClock(live);
         return live.clock;
@@ -560,6 +563,8 @@ function publicClockState(game) {
 function checkWinner(game) {
     if (game.scores.black >= WIN_SCORE) game.winner = 'black';
     if (game.scores.white >= WIN_SCORE) game.winner = 'white';
+
+    if (game.winner) game.draw = false;
 
     if (game.winner) {
         game.phase = 'finished';
@@ -652,6 +657,7 @@ function publicGameState(game) {
         turn: game.turn,
         scores: game.scores,
         winner: game.winner,
+        draw: game.draw,
         clock: publicClockState(game),
         timeRule: {
             mainMs: MAIN_TIME_MS,
