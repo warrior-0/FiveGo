@@ -12,6 +12,7 @@
             <h1>오둑</h1>
             <p id="status">로그인 확인 중...</p>
             <p>흑 <span id="blackScore">0</span> : 백 <span id="whiteScore">0</span></p>
+            <p id="clockInfo">제한시간: 기본 10분 + 30초 타임 칩 3개</p>
             <p id="myColor">색상: 미정</p>
 
             <div id="matchPanel">
@@ -170,6 +171,7 @@
             document.getElementById('blackScore').textContent = state.scores.black;
             document.getElementById('whiteScore').textContent = state.scores.white;
             document.getElementById('myColor').textContent = `색상: ${myColor ? colorName(myColor) : '입찰 중'}`;
+            renderClock(state);
 
             renderBoard(state.board);
             renderPanels(state);
@@ -186,6 +188,37 @@
                 const turnText = `${colorName(state.turn)} 차례`;
                 document.getElementById('status').textContent = state.turn === myColor ? `${turnText} - 내가 둘 차례` : turnText;
             }
+        }
+
+
+        function renderClock(state) {
+            const clockInfo = document.getElementById('clockInfo');
+
+            if (!state.clock) {
+                clockInfo.textContent = '제한시간: 기본 10분 + 30초 타임 칩 3개';
+                return;
+            }
+
+            const blackClock = formatClock(state.clock.black);
+            const whiteClock = formatClock(state.clock.white);
+            clockInfo.textContent = `흑 시간 ${blackClock} / 백 시간 ${whiteClock}`;
+        }
+
+        function formatClock(clock) {
+            const mainSeconds = Math.max(0, Math.ceil(clock.mainMs / 1000));
+
+            if (mainSeconds > 0) {
+                return `${formatSeconds(mainSeconds)} · 칩 ${clock.chips}개`;
+            }
+
+            const chipSeconds = Math.max(0, Math.ceil(clock.chipMs / 1000));
+            return `초읽기 ${chipSeconds}초 · 칩 ${clock.chips}개`;
+        }
+
+        function formatSeconds(totalSeconds) {
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes}:${String(seconds).padStart(2, '0')}`;
         }
 
         function renderBoard(boardState) {

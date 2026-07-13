@@ -1,5 +1,6 @@
 const db = require('./db');
 const {
+    applyTurnClock,
     createGame,
     getColorBySocket,
     placeStone,
@@ -11,6 +12,7 @@ const {
 const waiting = [];
 const games = new Map();
 const socketRooms = new Map();
+const clockIntervals = new Map();
 
 async function loadUser(socket) {
     const userId = socket.request.session?.userId;
@@ -86,7 +88,39 @@ async function emitState(io, roomId, game) {
     io.to(roomId).emit('gameState', publicGameState(game));
 }
 
+function ensureClockInterval(io, roomId, game) {
+    if (clockIntervals.has(roomId)) return;
+
+    const intervalId = setInterval(async () => {
+        const liveGame = games.get(roomId);
+
+        if (!liveGame || liveGame.phase !== 'playing' || liveGame.winner) {
+            clearInterval(intervalId);
+            clockIntervals.delete(roomId);
+            return;
+        }
+
+        if (applyTurnClock(liveGame)) {
+            await emitState(io, roomId, liveGame);
+            clearInterval(intervalId);
+            clockIntervals.delete(roomId);
+            return;
+        }
+
+        io.to(roomId).emit('gameState', publicGameState(liveGame));
+    }, 1000);
+
+    clockIntervals.set(roomId, intervalId);
+}
+
 function cleanupRoom(roomId) {
+    const intervalId = clockIntervals.get(roomId);
+
+    if (intervalId) {
+        clearInterval(intervalId);
+        clockIntervals.delete(roomId);
+    }
+
     const game = games.get(roomId);
 
     if (!game) return;
@@ -191,6 +225,9 @@ function attachSocket(io) {
                 if (!game) throw new Error('게임을 찾을 수 없습니다.');
 
                 selectAugments(game, socket.id, augmentIds || []);
+                if (game.phase === 'playing') {
+                    ensureClockInterval(io, roomId, game);
+                }
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
@@ -198,9 +235,9 @@ function attachSocket(io) {
         });
 
         socket.on('placeStone', async ({ roomId, x, y }) => {
-            try {
-                const game = games.get(roomId);
+            const game = games.get(roomId);
 
+            try {
                 if (!game) throw new Error('게임을 찾을 수 없습니다.');
 
                 const color = getColorBySocket(game, socket.id);
@@ -208,9 +245,16 @@ function attachSocket(io) {
                 if (!color) throw new Error('참가자가 아닙니다.');
 
                 placeStone(game, color, Number(x), Number(y));
+                if (game.phase === 'playing') {
+                    ensureClockInterval(io, roomId, game);
+                }
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
+
+                if (game?.winner) {
+                    await emitState(io, roomId, game);
+                }
             }
         });
 

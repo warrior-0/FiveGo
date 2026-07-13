@@ -1,6 +1,9 @@
 const BOARD_SIZE = 13;
 const WIN_SCORE = 5;
 const CHOICE_COUNT = 3;
+const MAIN_TIME_MS = 10 * 60 * 1000;
+const TIME_CHIP_MS = 30 * 1000;
+const TIME_CHIP_COUNT = 3;
 
 const AUGMENT_EFFECTS = {
     initiative: {
@@ -93,6 +96,14 @@ function pickAugmentChoices(deck) {
     return shuffle(deck).slice(0, Math.min(CHOICE_COUNT, deck.length)).map(publicAugment);
 }
 
+function createClock() {
+    return {
+        black: { mainMs: MAIN_TIME_MS, chips: TIME_CHIP_COUNT, chipMs: TIME_CHIP_MS },
+        white: { mainMs: MAIN_TIME_MS, chips: TIME_CHIP_COUNT, chipMs: TIME_CHIP_MS },
+        turnStartedAt: null
+    };
+}
+
 function createPlayerState({ socketId, user, deck }) {
     return {
         socketId,
@@ -137,6 +148,7 @@ function createGame(playerA, playerB) {
             white: 0
         },
         winner: null,
+        clock: createClock(),
         log: ['입찰을 진행하세요. 더 많이 점수를 양보한 사람이 흑을 잡습니다.']
     };
 }
@@ -257,7 +269,8 @@ function selectAugments(game, socketId, selectedAugmentIds) {
         applyStartAugments(game, 'black');
         applyStartAugments(game, 'white');
         game.phase = 'playing';
-        game.log.push('게임을 시작합니다.');
+        startTurnClock(game);
+        game.log.push('게임을 시작합니다. 각 플레이어는 기본 10분과 30초 타임 칩 3개를 가집니다.');
         checkWinner(game);
     }
 }
@@ -376,12 +389,79 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
     return { scoreDelta, skipTurn };
 }
 
+
+function startTurnClock(game, now = Date.now()) {
+    if (game.phase !== 'playing' || game.winner) {
+        game.clock.turnStartedAt = null;
+        return;
+    }
+
+    game.clock.turnStartedAt = now;
+}
+
+function spendClockTime(clockEntry, elapsedMs) {
+    let remainingElapsed = Math.max(0, elapsedMs);
+
+    if (clockEntry.mainMs > 0) {
+        const spentMain = Math.min(clockEntry.mainMs, remainingElapsed);
+        clockEntry.mainMs -= spentMain;
+        remainingElapsed -= spentMain;
+    }
+
+    while (remainingElapsed > 0 && clockEntry.chips > 0) {
+        const spentChip = Math.min(clockEntry.chipMs, remainingElapsed);
+        clockEntry.chipMs -= spentChip;
+        remainingElapsed -= spentChip;
+
+        if (clockEntry.chipMs <= 0) {
+            clockEntry.chips -= 1;
+
+            if (clockEntry.chips > 0) {
+                clockEntry.chipMs = TIME_CHIP_MS;
+            }
+        }
+    }
+
+    return clockEntry.mainMs <= 0 && clockEntry.chips <= 0 && clockEntry.chipMs <= 0;
+}
+
+function applyTurnClock(game, now = Date.now()) {
+    if (game.phase !== 'playing' || game.winner || !game.clock.turnStartedAt) return false;
+
+    const color = game.turn;
+    const elapsedMs = now - game.clock.turnStartedAt;
+    game.clock.turnStartedAt = now;
+
+    if (spendClockTime(game.clock[color], elapsedMs)) {
+        game.winner = opponent(color);
+        game.phase = 'finished';
+        game.clock.turnStartedAt = null;
+        game.log.push(`${color === 'black' ? '흑' : '백'} 시간패: ${game.winner === 'black' ? '흑' : '백'} 승리`);
+        return true;
+    }
+
+    return false;
+}
+
+function publicClockState(game) {
+    const snapshot = JSON.parse(JSON.stringify(game.clock));
+
+    if (game.phase === 'playing' && !game.winner && snapshot.turnStartedAt) {
+        const live = { clock: snapshot, turn: game.turn, phase: game.phase, winner: game.winner, log: [] };
+        applyTurnClock(live);
+        return live.clock;
+    }
+
+    return snapshot;
+}
+
 function checkWinner(game) {
     if (game.scores.black >= WIN_SCORE) game.winner = 'black';
     if (game.scores.white >= WIN_SCORE) game.winner = 'white';
 
     if (game.winner) {
         game.phase = 'finished';
+        game.clock.turnStartedAt = null;
         game.log.push(`${game.winner === 'black' ? '흑' : '백'} 승리`);
     }
 }
@@ -389,6 +469,7 @@ function checkWinner(game) {
 function placeStone(game, color, x, y) {
     if (game.phase !== 'playing') throw new Error('아직 착수할 수 없습니다.');
     if (game.winner) throw new Error('이미 종료된 게임입니다.');
+    if (applyTurnClock(game)) throw new Error('시간이 모두 소진되었습니다.');
     if (game.turn !== color) throw new Error('상대 차례입니다.');
     if (x < 0 || y < 0 || x >= BOARD_SIZE || y >= BOARD_SIZE || game.board[y][x]) throw new Error('둘 수 없는 위치입니다.');
 
@@ -429,6 +510,7 @@ function placeStone(game, color, x, y) {
 
     if (!game.winner) {
         game.turn = result.skipTurn ? color : enemy;
+        startTurnClock(game);
     }
 
     return { captured, scoreDelta: result.scoreDelta };
@@ -468,6 +550,12 @@ function publicGameState(game) {
         turn: game.turn,
         scores: game.scores,
         winner: game.winner,
+        clock: publicClockState(game),
+        timeRule: {
+            mainMs: MAIN_TIME_MS,
+            chipMs: TIME_CHIP_MS,
+            chipCount: TIME_CHIP_COUNT
+        },
         log: game.log.slice(-8)
     };
 }
@@ -475,8 +563,12 @@ function publicGameState(game) {
 module.exports = {
     BOARD_SIZE,
     WIN_SCORE,
+    MAIN_TIME_MS,
+    TIME_CHIP_MS,
+    TIME_CHIP_COUNT,
     AUGMENT_EFFECTS,
     createGame,
+    applyTurnClock,
     getColorBySocket,
     placeStone,
     publicGameState,
