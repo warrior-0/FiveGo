@@ -180,6 +180,8 @@
 
             if (state.winner) {
                 document.getElementById('status').textContent = `${colorName(state.winner)} 승리!`;
+            } else if (state.phase === 'finished') {
+                document.getElementById('status').textContent = '무승부로 종료';
             } else if (state.phase === 'bidding') {
                 document.getElementById('status').textContent = '흑 입찰 단계';
             } else if (state.phase === 'augment-selection') {

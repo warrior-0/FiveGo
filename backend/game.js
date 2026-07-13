@@ -272,6 +272,10 @@ function selectAugments(game, socketId, selectedAugmentIds) {
         startTurnClock(game);
         game.log.push('게임을 시작합니다. 각 플레이어는 기본 10분과 30초 타임 칩 3개를 가집니다.');
         checkWinner(game);
+
+        if (!game.winner) {
+            resolveTurnAvailability(game);
+        }
     }
 }
 
@@ -338,6 +342,104 @@ function groupAndLiberties(board, x, y) {
     }
 
     return { stones, liberties: liberties.size };
+}
+
+
+function cloneBoard(board) {
+    return board.map((row) => [...row]);
+}
+
+function evaluateMove(board, color, x, y) {
+    if (x < 0 || y < 0 || x >= BOARD_SIZE || y >= BOARD_SIZE || board[y][x]) {
+        return { legal: false, captured: 0 };
+    }
+
+    const nextBoard = cloneBoard(board);
+    const enemy = opponent(color);
+    let captured = 0;
+
+    nextBoard[y][x] = color;
+
+    for (const [nx, ny] of neighbors(x, y)) {
+        if (nextBoard[ny][nx] === enemy) {
+            const group = groupAndLiberties(nextBoard, nx, ny);
+
+            if (group.liberties === 0) {
+                captured += group.stones.length;
+
+                for (const [gx, gy] of group.stones) {
+                    nextBoard[gy][gx] = null;
+                }
+            }
+        }
+    }
+
+    const own = groupAndLiberties(nextBoard, x, y);
+
+    if (own.liberties === 0 && captured === 0) {
+        return { legal: false, captured: 0 };
+    }
+
+    return { legal: true, captured };
+}
+
+function findMove(game, color, predicate = () => true) {
+    for (let y = 0; y < BOARD_SIZE; y += 1) {
+        for (let x = 0; x < BOARD_SIZE; x += 1) {
+            const result = evaluateMove(game.board, color, x, y);
+
+            if (result.legal && predicate(result)) {
+                return { x, y, captured: result.captured };
+            }
+        }
+    }
+
+    return null;
+}
+
+function hasLegalMove(game, color) {
+    return Boolean(findMove(game, color));
+}
+
+function hasCapturingMove(game, color) {
+    return Boolean(findMove(game, color, (result) => result.captured > 0));
+}
+
+function finishByScore(game) {
+    game.phase = 'finished';
+    game.clock.turnStartedAt = null;
+
+    if (game.scores.black > game.scores.white) {
+        game.winner = 'black';
+        game.log.push(`착수 가능한 포획수가 없어 현재 점수로 정산: 흑 승리`);
+    } else if (game.scores.white > game.scores.black) {
+        game.winner = 'white';
+        game.log.push(`착수 가능한 포획수가 없어 현재 점수로 정산: 백 승리`);
+    } else {
+        game.winner = null;
+        game.log.push('착수 가능한 포획수가 없어 현재 점수로 정산: 무승부');
+    }
+}
+
+function resolveTurnAvailability(game) {
+    if (game.phase !== 'playing' || game.winner) return;
+
+    const current = game.turn;
+    const next = opponent(current);
+
+    if (hasLegalMove(game, current)) {
+        startTurnClock(game);
+        return;
+    }
+
+    if (hasCapturingMove(game, next)) {
+        game.log.push(`${current === 'black' ? '흑' : '백'}은 둘 수 있는 수가 없어 자동 패스되었습니다.`);
+        game.turn = next;
+        startTurnClock(game);
+        return;
+    }
+
+    finishByScore(game);
 }
 
 function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount) {
@@ -510,7 +612,7 @@ function placeStone(game, color, x, y) {
 
     if (!game.winner) {
         game.turn = result.skipTurn ? color : enemy;
-        startTurnClock(game);
+        resolveTurnAvailability(game);
     }
 
     return { captured, scoreDelta: result.scoreDelta };
@@ -570,8 +672,11 @@ module.exports = {
     createGame,
     applyTurnClock,
     getColorBySocket,
+    hasCapturingMove,
+    hasLegalMove,
     placeStone,
     publicGameState,
+    resolveTurnAvailability,
     selectAugments,
     submitBid
 };
