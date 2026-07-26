@@ -29,7 +29,7 @@ async function loadUser(socket) {
     }
 
     const [deck] = await db.query(
-        `SELECT a.id, a.code, a.name, a.description, a.timing, a.effect_key
+        `SELECT a.id, a.name, a.description, a.timing, a.effect
          FROM user_augments ua
          JOIN augments a ON a.id = ua.augment_id
          WHERE ua.user_id = ?
@@ -214,13 +214,13 @@ function attachSocket(io) {
             if (typeof ack === 'function') ack();
         });
 
-        socket.on('submitBid', async ({ roomId, bid, sacrificeAugmentId }) => {
+        socket.on('submitBid', async ({ roomId, bid }) => {
             try {
                 const game = games.get(roomId);
 
                 if (!game) throw new Error('게임을 찾을 수 없습니다.');
 
-                submitBid(game, socket.id, bid, sacrificeAugmentId);
+                submitBid(game, socket.id, bid);
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);

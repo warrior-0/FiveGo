@@ -1,39 +1,34 @@
 const BOARD_SIZE = 13;
 const WIN_SCORE = 5;
 const CHOICE_COUNT = 3;
+const MAX_BID = 3;
 const MAIN_TIME_MS = 10 * 60 * 1000;
 const TIME_CHIP_MS = 30 * 1000;
 const TIME_CHIP_COUNT = 3;
 
-const { AUGMENT_CATALOG } = require('./augmentCatalog');
 
 const AUGMENT_EFFECT_RULES = {
-    bid_bonus: { timing: 'bid', bidBonus: 1 },
     capture_score_reduce: { timing: 'capture-first' },
     gain_one_on_captured: { timing: 'capture-first' },
     start_gain_one: { timing: 'start' },
-    skip_capturer_next_turn: { timing: 'capture-first' },
-    extra_start_choice: { timing: 'start' },
-    gain_one_if_behind: { timing: 'capture-first' },
-    reduce_leader_at_four: { timing: 'capture-first' }
+    gain_one_if_behind_on_activate: { timing: 'start' },
+    reduce_multi_capture_score: { timing: 'capture-first' },
+    cap_capture_score_two: { timing: 'capture-first' },
+    gain_one_if_low_score: { timing: 'capture-first' },
+    reduce_leading_capturer_score: { timing: 'capture-first' }
 };
 
-const CATALOG_BY_CODE = new Map(AUGMENT_CATALOG.map((augment) => [augment.code, augment]));
-
 function normalizeAugment(augment) {
-    const catalog = CATALOG_BY_CODE.get(augment.code) || {};
-    const effectKey = augment.effect_key || augment.effectKey || catalog.effectKey || augment.code;
-    const rule = AUGMENT_EFFECT_RULES[effectKey] || {};
-    const timing = augment.timing || catalog.timing || rule.timing || 'capture-first';
+    const effect = augment.effect;
+    const rule = AUGMENT_EFFECT_RULES[effect] || {};
+    const timing = augment.timing || rule.timing || 'capture-first';
 
     return {
         ...augment,
-        effectKey,
-        effect_key: effectKey,
+        effect,
         timing,
-        name: augment.name || catalog.name || augment.code,
-        description: augment.description || catalog.description || '',
-        bidBonus: rule.bidBonus || 0
+        name: augment.name || effect,
+        description: augment.description || ''
     };
 }
 
@@ -48,8 +43,8 @@ function opponent(color) {
 function clampBid(value) {
     const bid = Number(value);
 
-    if (!Number.isInteger(bid) || bid < 0 || bid > 4) {
-        throw new Error('입찰 점수는 0~4 사이의 정수여야 합니다.');
+    if (!Number.isInteger(bid) || bid < 0 || bid > MAX_BID) {
+        throw new Error(`입찰 점수는 0~${MAX_BID} 사이의 정수여야 합니다.`);
     }
 
     return bid;
@@ -71,13 +66,11 @@ function publicAugment(augment) {
 
     return {
         id: normalized.id,
-        code: normalized.code,
-        effectKey: normalized.effectKey,
+        effect: normalized.effect,
         name: normalized.name,
         description: normalized.description,
         timing: normalized.timing,
-        activationType: normalized.timing === 'start' ? 'immediate' : 'automatic',
-        bidBonus: normalized.bidBonus
+        activationType: normalized.timing === 'start' ? 'immediate' : 'automatic'
     };
 }
 
@@ -110,7 +103,6 @@ function createPlayerState({ socketId, user, deck }) {
         triggeredAugmentIds: [],
         reserveActivated: false,
         bid: null,
-        sacrificeAugmentId: null,
         ready: false
     };
 }
@@ -155,7 +147,7 @@ function getColorBySocket(game, socketId) {
     return null;
 }
 
-function submitBid(game, socketId, bid, sacrificeAugmentId = null) {
+function submitBid(game, socketId, bid) {
     if (game.phase !== 'bidding') {
         throw new Error('이미 입찰이 종료되었습니다.');
     }
@@ -167,11 +159,6 @@ function submitBid(game, socketId, bid, sacrificeAugmentId = null) {
     }
 
     seat.bid = clampBid(bid);
-    seat.sacrificeAugmentId = sacrificeAugmentId ? Number(sacrificeAugmentId) : null;
-
-    if (seat.sacrificeAugmentId && !seat.choices.some((augment) => augment.id === seat.sacrificeAugmentId)) {
-        throw new Error('희생할 수 없는 증강입니다.');
-    }
 
     game.log.push(`${seat.user.nickname} 입찰 완료`);
 
@@ -183,13 +170,7 @@ function submitBid(game, socketId, bid, sacrificeAugmentId = null) {
 }
 
 function bidPower(seat) {
-    const sacrificed = seat.choices.find((augment) => augment.id === seat.sacrificeAugmentId);
-    const sacrificeBonus = sacrificed ? 1 : 0;
-    const passiveBonus = seat.choices
-        .filter((augment) => augment.id !== seat.sacrificeAugmentId)
-        .reduce((sum, augment) => sum + (augment.bidBonus || 0), 0);
-
-    return seat.bid + sacrificeBonus + passiveBonus;
+    return seat.bid;
 }
 
 function resolveBids(game) {
@@ -236,10 +217,9 @@ function selectAugments(game, socketId, selectedAugmentIds) {
 
     const player = game.players[color];
     const selected = selectedAugmentIds.map(Number);
-    const availableChoices = player.choices.filter((augment) => augment.id !== player.sacrificeAugmentId);
+    const availableChoices = player.choices;
     const baseRequired = color === 'black' ? 1 : 2;
-    const hasExtraChoice = availableChoices.some((augment) => augment.effectKey === 'extra_start_choice');
-    const required = Math.min(availableChoices.length, baseRequired + (hasExtraChoice ? 1 : 0));
+    const required = Math.min(availableChoices.length, baseRequired);
     const choiceIds = new Set(availableChoices.map((augment) => augment.id));
 
     if (selected.length !== required) {
@@ -275,7 +255,7 @@ function prepareAugments(game, color) {
     const selected = new Set(player.selectedAugmentIds);
 
     player.activeAugments = player.choices.filter((augment) => selected.has(augment.id));
-    player.reserveAugments = player.choices.filter((augment) => !selected.has(augment.id) && augment.id !== player.sacrificeAugmentId);
+    player.reserveAugments = player.choices.filter((augment) => !selected.has(augment.id));
     player.startAugments = player.activeAugments;
     player.captureAugments = player.reserveAugments;
 }
@@ -291,9 +271,16 @@ function activateImmediateAugments(game, color, augments) {
     for (const augment of augments) {
         if (player.triggeredAugmentIds.includes(augment.id)) continue;
 
-        if (augment.effectKey === 'start_gain_one') {
+        if (augment.effect === 'start_gain_one') {
             game.scores[color] += 1;
             game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 1점 획득`);
+        } else if (augment.effect === 'gain_one_if_behind_on_activate') {
+            const enemy = opponent(color);
+
+            if (game.scores[color] < game.scores[enemy]) {
+                game.scores[color] += 1;
+                game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
+            }
         }
 
         if (augment.timing === 'start') {
@@ -458,24 +445,29 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
 
         capturedPlayer.triggeredAugmentIds.push(augment.id);
 
-        if (augment.effectKey === 'capture_score_reduce') {
+        if (augment.effect === 'capture_score_reduce') {
             scoreDelta = Math.max(0, scoreDelta - 1);
             game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 상대 획득 점수 -1`);
-        } else if (augment.effectKey === 'gain_one_on_captured') {
+        } else if (augment.effect === 'gain_one_on_captured') {
             game.scores[capturedColor] += 1;
             game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 반격 1점 획득`);
-        } else if (augment.effectKey === 'skip_capturer_next_turn') {
-            skipTurn = true;
-            game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: ${capturingPlayer.user.nickname} 다음 턴 스킵`);
-        } else if (augment.effectKey === 'gain_one_if_behind') {
-            if (game.scores[capturedColor] < game.scores[capturingColor]) {
-                game.scores[capturedColor] += 1;
-                game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
+        } else if (augment.effect === 'reduce_multi_capture_score') {
+            if (capturedCount >= 2) {
+                scoreDelta = Math.max(0, scoreDelta - 1);
+                game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 다중 포획 점수 -1`);
             }
-        } else if (augment.effectKey === 'reduce_leader_at_four') {
-            if (game.scores[capturingColor] >= 4) {
+        } else if (augment.effect === 'cap_capture_score_two') {
+            scoreDelta = Math.min(scoreDelta, 2);
+            game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 포획 점수 최대 2점`);
+        } else if (augment.effect === 'gain_one_if_low_score') {
+            if (game.scores[capturedColor] <= 2) {
+                game.scores[capturedColor] += 1;
+                game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 버티기 1점 획득`);
+            }
+        } else if (augment.effect === 'reduce_leading_capturer_score') {
+            if (game.scores[capturingColor] > game.scores[capturedColor]) {
                 game.scores[capturingColor] = Math.max(0, game.scores[capturingColor] - 1);
-                game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 상대 점수 -1`);
+                game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 앞선 상대 점수 -1`);
             }
         }
     }
@@ -631,7 +623,6 @@ function publicGameState(game) {
         return {
             ...seat,
             bid: revealBids || seat.bid === null ? seat.bid : 'submitted',
-            sacrificeAugmentId: revealBids ? seat.sacrificeAugmentId : null,
             selectedAugmentIds: revealAugments ? seat.selectedAugmentIds : [],
             startAugments: revealAugments ? seat.startAugments : [],
             captureAugments: revealAugments ? seat.captureAugments : [],
@@ -674,6 +665,7 @@ module.exports = {
     MAIN_TIME_MS,
     TIME_CHIP_MS,
     TIME_CHIP_COUNT,
+    MAX_BID,
     AUGMENT_EFFECT_RULES,
     createGame,
     applyTurnClock,
