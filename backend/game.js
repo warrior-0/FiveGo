@@ -11,7 +11,7 @@ const AUGMENT_EFFECT_RULES = {
     capture_score_reduce: { timing: 'capture-first' },
     gain_one_on_captured: { timing: 'capture-first' },
     start_gain_one: { timing: 'start' },
-    gain_one_if_behind_on_activate: { timing: 'start' },
+    gain_one_if_behind_on_activate: { timing: 'capture-first' },
     reduce_multi_capture_score: { timing: 'capture-first' },
     cap_capture_score_two: { timing: 'capture-first' },
     gain_one_if_low_score: { timing: 'capture-first' },
