@@ -274,13 +274,6 @@ function activateImmediateAugments(game, color, augments) {
         if (augment.effect === 'start_gain_one') {
             game.scores[color] += 1;
             game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 1점 획득`);
-        } else if (augment.effect === 'gain_one_if_behind_on_activate') {
-            const enemy = opponent(color);
-
-            if (game.scores[color] < game.scores[enemy]) {
-                game.scores[color] += 1;
-                game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
-            }
         }
 
         if (augment.timing === 'start') {
@@ -465,9 +458,16 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
                 game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 버티기 1점 획득`);
             }
         } else if (augment.effect === 'reduce_leading_capturer_score') {
-            if (game.scores[capturingColor] > game.scores[capturedColor]) {
+            if (game.scores[capturingColor] + scoreDelta > game.scores[capturedColor]) {
                 game.scores[capturingColor] = Math.max(0, game.scores[capturingColor] - 1);
                 game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 앞선 상대 점수 -1`);
+            }
+        } else if (augment.effect === 'gain_one_if_behind_on_activate') {
+            const enemy = opponent(color);
+
+            if (game.scores[color] + scoreDelta < game.scores[enemy]) {
+                game.scores[color] += 1;
+                game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
             }
         }
     }
