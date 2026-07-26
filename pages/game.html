@@ -173,7 +173,7 @@
             document.getElementById('myColor').textContent = `색상: ${myColor ? colorName(myColor) : '입찰 중'}`;
             renderClock(state);
 
-            renderBoard(state.board);
+            renderBoard(state.board, state.lastMove);
             renderPanels(state);
             renderGameInfo(state);
             renderLog(state.log);
@@ -225,10 +225,14 @@
             return `${minutes}:${String(seconds).padStart(2, '0')}`;
         }
 
-        function renderBoard(boardState) {
+        function renderBoard(boardState, lastMove) {
             boardState.flat().forEach((stone, index) => {
                 const cell = board.children[index];
-                cell.className = `cell ${stone || ''}`;
+                const x = Number(cell.dataset.x);
+                const y = Number(cell.dataset.y);
+                const isLastMove = lastMove && lastMove.x === x && lastMove.y === y;
+                cell.className = `cell ${stone || ''}${isLastMove ? ' last-move' : ''}`;
+                cell.setAttribute('aria-label', isLastMove ? `마지막 착수: ${colorName(lastMove.color)} ${x + 1}, ${y + 1}` : `${x + 1}, ${y + 1}`);
             });
         }
 
@@ -250,7 +254,7 @@
                 const player = state.players[myColor];
                 const availableChoices = player.choices.filter((augment) => augment.id !== player.sacrificeAugmentId);
                 const selectedBase = myColor === 'black' ? 1 : 2;
-                const required = Math.min(availableChoices.length, selectedBase + (availableChoices.some((augment) => augment.code === 'extra_choice') ? 1 : 0));
+                const required = Math.min(availableChoices.length, selectedBase + (availableChoices.some((augment) => augment.effectKey === 'extra_start_choice') ? 1 : 0));
                 document.getElementById('augmentHelp').textContent = `${colorName(myColor)}은 활성화 시킬 증강 ${required}개를 고릅니다. 나머지는 내 돌이 처음 잡힐 때 활성화됩니다.`;
                 document.getElementById('augmentChoices').innerHTML = availableChoices.map((augment) => `
                     <label class="augment-card compact">

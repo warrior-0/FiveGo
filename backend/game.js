@@ -5,49 +5,37 @@ const MAIN_TIME_MS = 10 * 60 * 1000;
 const TIME_CHIP_MS = 30 * 1000;
 const TIME_CHIP_COUNT = 3;
 
-const AUGMENT_EFFECTS = {
-    initiative: {
-        timing: 'bid',
-        bidBonus: 1,
-        name: '선공 집착',
-        description: '흑을 가져가기 위한 입찰 계산에 +1을 더합니다. 이 증강은 시작 증강이나 피포획 발동 증강으로 쓰이지 않고, 색 결정에만 영향을 줍니다. 같은 입찰 점수에서 흑을 안정적으로 잡고 싶을 때 쓰는 증강입니다.'
-    },
-    shield: {
-        timing: 'capture-first',
-        name: '방패진',
-        description: '내 돌이 처음 잡히는 순간 1회 발동합니다. 그 포획으로 상대가 얻는 점수를 1점 줄입니다. 한 번에 여러 개가 잡혀도 총 획득 점수에서 1점만 줄고, 점수는 0점 아래로 내려가지 않습니다.'
-    },
-    revenge: {
-        timing: 'capture-first',
-        name: '복수의 수',
-        description: '내 돌이 처음 잡히는 순간 1회 발동합니다. 내가 즉시 1점을 얻습니다. 실제 보드에서 상대 돌을 제거하지는 않고, 포획 점수만 추가되는 반격형 증강입니다.'
-    },
-    focus: {
-        timing: 'start',
-        name: '집중',
-        description: '시작 증강으로 선택하면 게임 시작 전에 즉시 1점을 얻습니다. 5점 승리 조건에 바로 반영되므로, 백의 입찰 보정 점수와 합쳐 빠른 승리를 노릴 수 있습니다.'
-    },
-    pressure: {
-        timing: 'capture-first',
-        name: '압박',
-        description: '내 돌이 처음 잡히는 순간 1회 발동합니다. 상대의 다음 턴을 건너뛰게 만들어, 돌을 잡은 플레이어가 한 번 더 둡니다. 포획을 일부러 허용해 선수를 되찾는 용도로 사용할 수 있습니다.'
-    },
-    extra_choice: {
-        timing: 'start',
-        name: '넓은 선택지',
-        description: '증강 선택 단계에서 시작 증강 선택 수를 1개 늘립니다. 흑은 1개 대신 2개, 백은 2개 대신 3개를 시작 증강으로 선택합니다. 선택되지 않은 증강은 기존처럼 첫 피포획 시 발동 후보가 됩니다.'
-    },
-    comeback: {
-        timing: 'capture-first',
-        name: '역전 감각',
-        description: '내 돌이 처음 잡히는 순간 1회 발동합니다. 발동 시점에 내 점수가 상대보다 낮으면 내가 1점을 얻습니다. 동점이거나 앞서고 있으면 효과 없이 소모됩니다.'
-    },
-    stone_tax: {
-        timing: 'capture-first',
-        name: '끝내기 견제',
-        description: '내 돌이 처음 잡히는 순간 1회 발동합니다. 상대가 이미 4점 이상이면 상대 점수를 1점 깎습니다. 상대가 5점에 도달하는 포획을 노릴 때 역전 시간을 벌기 위한 방어형 증강입니다.'
-    }
+const { AUGMENT_CATALOG } = require('./augmentCatalog');
+
+const AUGMENT_EFFECT_RULES = {
+    bid_bonus: { timing: 'bid', bidBonus: 1 },
+    capture_score_reduce: { timing: 'capture-first' },
+    gain_one_on_captured: { timing: 'capture-first' },
+    start_gain_one: { timing: 'start' },
+    skip_capturer_next_turn: { timing: 'capture-first' },
+    extra_start_choice: { timing: 'start' },
+    gain_one_if_behind: { timing: 'capture-first' },
+    reduce_leader_at_four: { timing: 'capture-first' }
 };
+
+const CATALOG_BY_CODE = new Map(AUGMENT_CATALOG.map((augment) => [augment.code, augment]));
+
+function normalizeAugment(augment) {
+    const catalog = CATALOG_BY_CODE.get(augment.code) || {};
+    const effectKey = augment.effect_key || augment.effectKey || catalog.effectKey || augment.code;
+    const rule = AUGMENT_EFFECT_RULES[effectKey] || {};
+    const timing = augment.timing || catalog.timing || rule.timing || 'capture-first';
+
+    return {
+        ...augment,
+        effectKey,
+        effect_key: effectKey,
+        timing,
+        name: augment.name || catalog.name || augment.code,
+        description: augment.description || catalog.description || '',
+        bidBonus: rule.bidBonus || 0
+    };
+}
 
 function createBoard() {
     return Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
@@ -79,16 +67,17 @@ function shuffle(array) {
 }
 
 function publicAugment(augment) {
-    const timing = AUGMENT_EFFECTS[augment.code]?.timing || 'capture-first';
+    const normalized = normalizeAugment(augment);
 
     return {
-        id: augment.id,
-        code: augment.code,
-        name: augment.name,
-        description: augment.description || AUGMENT_EFFECTS[augment.code]?.description || '',
-        timing,
-        activationType: timing === 'start' ? 'immediate' : 'automatic',
-        bidBonus: AUGMENT_EFFECTS[augment.code]?.bidBonus || 0
+        id: normalized.id,
+        code: normalized.code,
+        effectKey: normalized.effectKey,
+        name: normalized.name,
+        description: normalized.description,
+        timing: normalized.timing,
+        activationType: normalized.timing === 'start' ? 'immediate' : 'automatic',
+        bidBonus: normalized.bidBonus
     };
 }
 
@@ -150,6 +139,7 @@ function createGame(playerA, playerB) {
         winner: null,
         draw: false,
         clock: createClock(),
+        lastMove: null,
         log: ['입찰을 진행하세요. 더 많이 점수를 양보한 사람이 흑을 잡습니다.']
     };
 }
@@ -197,7 +187,7 @@ function bidPower(seat) {
     const sacrificeBonus = sacrificed ? 1 : 0;
     const passiveBonus = seat.choices
         .filter((augment) => augment.id !== seat.sacrificeAugmentId)
-        .reduce((sum, augment) => sum + (AUGMENT_EFFECTS[augment.code]?.bidBonus || 0), 0);
+        .reduce((sum, augment) => sum + (augment.bidBonus || 0), 0);
 
     return seat.bid + sacrificeBonus + passiveBonus;
 }
@@ -248,7 +238,7 @@ function selectAugments(game, socketId, selectedAugmentIds) {
     const selected = selectedAugmentIds.map(Number);
     const availableChoices = player.choices.filter((augment) => augment.id !== player.sacrificeAugmentId);
     const baseRequired = color === 'black' ? 1 : 2;
-    const hasExtraChoice = availableChoices.some((augment) => augment.code === 'extra_choice');
+    const hasExtraChoice = availableChoices.some((augment) => augment.effectKey === 'extra_start_choice');
     const required = Math.min(availableChoices.length, baseRequired + (hasExtraChoice ? 1 : 0));
     const choiceIds = new Set(availableChoices.map((augment) => augment.id));
 
@@ -301,12 +291,12 @@ function activateImmediateAugments(game, color, augments) {
     for (const augment of augments) {
         if (player.triggeredAugmentIds.includes(augment.id)) continue;
 
-        if (augment.code === 'focus') {
+        if (augment.effectKey === 'start_gain_one') {
             game.scores[color] += 1;
             game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 1점 획득`);
         }
 
-        if (AUGMENT_EFFECTS[augment.code]?.timing === 'start') {
+        if (augment.timing === 'start') {
             player.triggeredAugmentIds.push(augment.id);
         }
     }
@@ -464,25 +454,25 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
 
     for (const augment of activeBeforeCapture) {
         if (capturedPlayer.triggeredAugmentIds.includes(augment.id)) continue;
-        if (AUGMENT_EFFECTS[augment.code]?.timing !== 'capture-first') continue;
+        if (augment.timing !== 'capture-first') continue;
 
         capturedPlayer.triggeredAugmentIds.push(augment.id);
 
-        if (augment.code === 'shield') {
+        if (augment.effectKey === 'capture_score_reduce') {
             scoreDelta = Math.max(0, scoreDelta - 1);
             game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 상대 획득 점수 -1`);
-        } else if (augment.code === 'revenge') {
+        } else if (augment.effectKey === 'gain_one_on_captured') {
             game.scores[capturedColor] += 1;
             game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 반격 1점 획득`);
-        } else if (augment.code === 'pressure') {
+        } else if (augment.effectKey === 'skip_capturer_next_turn') {
             skipTurn = true;
             game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: ${capturingPlayer.user.nickname} 다음 턴 스킵`);
-        } else if (augment.code === 'comeback') {
+        } else if (augment.effectKey === 'gain_one_if_behind') {
             if (game.scores[capturedColor] < game.scores[capturingColor]) {
                 game.scores[capturedColor] += 1;
                 game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
             }
-        } else if (augment.code === 'stone_tax') {
+        } else if (augment.effectKey === 'reduce_leader_at_four') {
             if (game.scores[capturingColor] >= 4) {
                 game.scores[capturingColor] = Math.max(0, game.scores[capturingColor] - 1);
                 game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 상대 점수 -1`);
@@ -561,8 +551,16 @@ function publicClockState(game) {
 }
 
 function checkWinner(game) {
-    if (game.scores.black >= WIN_SCORE) game.winner = 'black';
-    if (game.scores.white >= WIN_SCORE) game.winner = 'white';
+    const blackWon = game.scores.black >= WIN_SCORE;
+    const whiteWon = game.scores.white >= WIN_SCORE;
+
+    if (blackWon && whiteWon) {
+        game.winner = game.scores.black >= game.scores.white ? 'black' : 'white';
+    } else if (blackWon) {
+        game.winner = 'black';
+    } else if (whiteWon) {
+        game.winner = 'white';
+    }
 
     if (game.winner) game.draw = false;
 
@@ -581,6 +579,7 @@ function placeStone(game, color, x, y) {
     if (x < 0 || y < 0 || x >= BOARD_SIZE || y >= BOARD_SIZE || game.board[y][x]) throw new Error('둘 수 없는 위치입니다.');
 
     game.board[y][x] = color;
+    game.lastMove = { x, y, color };
 
     let captured = 0;
     const enemy = opponent(color);
@@ -659,6 +658,7 @@ function publicGameState(game) {
         winner: game.winner,
         draw: game.draw,
         clock: publicClockState(game),
+        lastMove: game.lastMove,
         timeRule: {
             mainMs: MAIN_TIME_MS,
             chipMs: TIME_CHIP_MS,
@@ -674,7 +674,7 @@ module.exports = {
     MAIN_TIME_MS,
     TIME_CHIP_MS,
     TIME_CHIP_COUNT,
-    AUGMENT_EFFECTS,
+    AUGMENT_EFFECT_RULES,
     createGame,
     applyTurnClock,
     getColorBySocket,
