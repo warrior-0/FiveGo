@@ -463,10 +463,8 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
                 game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 앞선 상대 점수 -1`);
             }
         } else if (augment.effect === 'gain_one_if_behind_on_activate') {
-            const enemy = opponent(color);
-
-            if (game.scores[color] + scoreDelta < game.scores[enemy]) {
-                game.scores[color] += 1;
+            if (game.scores[capturingColor] + scoreDelta < game.scores[capturedColor]) {
+                game.scores[capturedColor] += 1;
                 game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
             }
         }
