@@ -10,6 +10,7 @@ const authRoutes = require('./auth');
 const userRoutes = require('./user');
 const augmentRoutes = require('./augment');
 const attachSocket = require('./socket');
+const { syncAugmentSchema } = require('./augmentSetup');
 
 const app = express();
 
@@ -60,4 +61,12 @@ app.use((err, req, res, next) => {
 });
 
 attachSocket(io);
-server.listen(process.env.PORT || 3000, () => console.log('Odook server running'));
+
+syncAugmentSchema()
+    .then(() => {
+        server.listen(process.env.PORT || 3000, () => console.log('Odook server running'));
+    })
+    .catch((error) => {
+        console.error('Failed to sync augment schema', error);
+        process.exit(1);
+    });

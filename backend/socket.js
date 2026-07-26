@@ -29,7 +29,7 @@ async function loadUser(socket) {
     }
 
     const [deck] = await db.query(
-        `SELECT a.id, a.code, a.name, a.description
+        `SELECT a.id, a.name, a.description, a.timing, a.effect
          FROM user_augments ua
          JOIN augments a ON a.id = ua.augment_id
          WHERE ua.user_id = ?
