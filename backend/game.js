@@ -418,24 +418,26 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
     if (capturedCount <= 0) return { scoreDelta: capturedCount, skipTurn: false };
 
     const capturedPlayer = game.players[capturedColor];
-    const capturingPlayer = game.players[capturingColor];
     const activeBeforeCapture = [...capturedPlayer.activeAugments];
     let scoreDelta = capturedCount;
     let skipTurn = false;
 
-    if (!capturedPlayer.reserveActivated && capturedPlayer.reserveAugments.length) {
-        capturedPlayer.reserveActivated = true;
-        capturedPlayer.activeAugments.push(...capturedPlayer.reserveAugments);
-        game.log.push(`${capturedPlayer.user.nickname}의 대기 증강이 활성화되었습니다.`);
-        activateImmediateAugments(game, capturedColor, capturedPlayer.reserveAugments);
-        capturedPlayer.reserveAugments = [];
-        capturedPlayer.captureAugments = [];
+    // 대기 증강 활성화 여부 확인 (실제 활성화 및 즉시 효과는 증강 효과 처리 후에 수행)
+    const shouldActivateReserve = !capturedPlayer.reserveActivated && capturedPlayer.reserveAugments.length;
+    const currentActiveAugments = [...activeBeforeCapture];
+    
+    if (shouldActivateReserve) {
+        currentActiveAugments.push(...capturedPlayer.reserveAugments);
     }
 
-    for (const augment of activeBeforeCapture) {
+    for (const augment of currentActiveAugments) {
         if (capturedPlayer.triggeredAugmentIds.includes(augment.id)) continue;
         if (augment.timing !== 'capture-first') continue;
 
+        // 즉시 발동형 증강(start)은 activateImmediateAugments에서 처리하므로 제외
+        if (augment.effect === 'start_gain_one') continue;
+
+        // 효과가 발동 가능한 타이밍이면 일단 트리거된 것으로 간주 (1회성 효과 방지)
         capturedPlayer.triggeredAugmentIds.push(augment.id);
 
         if (augment.effect === 'capture_score_reduce') {
@@ -468,6 +470,20 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
                 game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
             }
         }
+    }
+
+    // 모든 capture-first 효과 처리 후 대기 증강의 즉시 효과 활성화
+    if (shouldActivateReserve) {
+        const reserveAugments = [...capturedPlayer.reserveAugments];
+        capturedPlayer.reserveActivated = true;
+        capturedPlayer.activeAugments.push(...reserveAugments);
+        game.log.push(`${capturedPlayer.user.nickname}의 대기 증강이 활성화되었습니다.`);
+        
+        // 즉시 발동 효과(예: start_gain_one) 처리
+        activateImmediateAugments(game, capturedColor, reserveAugments);
+        
+        capturedPlayer.reserveAugments = [];
+        capturedPlayer.captureAugments = [];
     }
 
     return { scoreDelta, skipTurn };
