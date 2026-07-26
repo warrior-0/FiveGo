@@ -154,3 +154,6 @@ button:hover {
 .player-info { padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fff; }
 .player-info p { margin: 6px 0; }
 .augment-status { display: grid; gap: 6px; margin-top: 8px; }
+.cell.last-move::before { content: ''; position: absolute; inset: 11px; border: 2px solid #ff3b30; border-radius: 50%; z-index: 2; pointer-events: none; }
+.cell.last-move.white::before { border-color: #007aff; }
+.cell.last-move:not(.black):not(.white)::before { inset: 8px; border-style: dashed; }
