@@ -4,7 +4,7 @@ const CHOICE_COUNT = 3;
 const MAX_BID = 3;
 const MAIN_TIME_MS = 5 * 60 * 1000;
 const TIME_CHIP_MS = 20 * 1000;
-const TIME_CHIP_COUNT = 3;
+const TIME_CHIP_COUNT = 0;
 
 
 const AUGMENT_EFFECT_RULES = {
@@ -241,7 +241,7 @@ function selectAugments(game, socketId, selectedAugmentIds) {
         applyStartAugments(game, 'white');
         game.phase = 'playing';
         startTurnClock(game);
-        game.log.push('게임을 시작합니다. 각 플레이어는 기본 5분과 30초 타임 칩 3개를 가집니다.');
+        game.log.push('게임을 시작합니다. 각 플레이어는 기본 5분과 20초 초읽기를 가집니다.');
         checkWinner(game);
 
         if (!game.winner) {
@@ -519,7 +519,6 @@ function spendClockTime(clockEntry, elapsedMs) {
 
     // 2. 초읽기(타임칩) 구간 계산
     // remainingElapsed가 정확히 chipMs의 배수일 때까지는 해당 칩 안에서 둔 것임
-    // 예: 30초(chipMs) 룰에서 30,000ms 소모 -> 0개 차감 / 30,001ms 소모 -> 1개 차감
     const usedChips = Math.ceil(remainingElapsed / clockEntry.chipMs) - 1;
 
     if (usedChips > 0) {
