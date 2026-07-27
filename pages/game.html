@@ -239,7 +239,7 @@
             const chipSec = Math.max(0, Math.ceil(chipMs / 1000));
 
             if (!inChip) {
-                return `${formatSeconds(mainSec)}`;
+                return `${formatSeconds(mainSec)} (20초)`;
             }
             return `<span class="warning">초읽기 ${chipSec}초</span>`;
         }
