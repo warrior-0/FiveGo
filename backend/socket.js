@@ -109,13 +109,17 @@ function ensureClockInterval(io, roomId, game) {
             return;
         }
 
-        if (applyTurnClock(liveGame)) {
+        // 서버 측에서 현재 시간 기준으로 시간 소모를 적용하고, 시간패 여부를 판단
+        const isTimedOut = applyTurnClock(liveGame);
+
+        if (isTimedOut) {
             await emitState(io, roomId, liveGame);
             clearInterval(intervalId);
             clockIntervals.delete(roomId);
             return;
         }
 
+        // 매 초마다 갱신된 시간 상태를 클라이언트에 전송
         io.to(roomId).emit('gameState', publicGameState(liveGame));
     }, 1000);
 
