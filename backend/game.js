@@ -1,8 +1,8 @@
-const BOARD_SIZE = 13;
+const BOARD_SIZE = 11;
 const WIN_SCORE = 5;
 const CHOICE_COUNT = 3;
 const MAX_BID = 3;
-const MAIN_TIME_MS = 10 * 60 * 1000;
+const MAIN_TIME_MS = 5 * 60 * 1000;
 const TIME_CHIP_MS = 30 * 1000;
 const TIME_CHIP_COUNT = 3;
 
