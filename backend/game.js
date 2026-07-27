@@ -4,7 +4,7 @@ const CHOICE_COUNT = 3;
 const MAX_BID = 3;
 const MAIN_TIME_MS = 5 * 60 * 1000;
 const TIME_CHIP_MS = 20 * 1000;
-const TIME_CHIP_COUNT = 1;
+// 타임칩(횟수)은 사용하지 않음 (무제한 초읽기)
 
 
 const AUGMENT_EFFECT_RULES = {
@@ -681,8 +681,7 @@ function publicGameState(game) {
         lastMove: game.lastMove,
         timeRule: {
             mainMs: MAIN_TIME_MS,
-            chipMs: TIME_CHIP_MS,
-            chipCount: TIME_CHIP_COUNT
+            chipMs: TIME_CHIP_MS
         },
         log: game.log.slice(-8)
     };
@@ -693,7 +692,6 @@ module.exports = {
     WIN_SCORE,
     MAIN_TIME_MS,
     TIME_CHIP_MS,
-    TIME_CHIP_COUNT,
     MAX_BID,
     AUGMENT_EFFECT_RULES,
     createGame,
