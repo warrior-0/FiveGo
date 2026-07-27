@@ -505,28 +505,35 @@ function startTurnClock(game, now = Date.now()) {
 function spendClockTime(clockEntry, elapsedMs) {
     let remainingElapsed = Math.max(0, elapsedMs);
 
-    // 본시간 차감
+    // 1. 본시간 차감
     if (clockEntry.mainMs > 0) {
         const spentMain = Math.min(clockEntry.mainMs, remainingElapsed);
         clockEntry.mainMs -= spentMain;
         remainingElapsed -= spentMain;
     }
 
-    // 본시간이 남아있으면 시간패 없음
+    // 본시간 내에 착수한 경우
     if (remainingElapsed <= 0) {
-        return false;
+        return false; // 패배 아님
     }
 
-    // 초읽기 판정
-    // 한 수가 초읽기 시간을 넘겼으면 칩 1개 소모
-    if (remainingElapsed > clockEntry.chipMs) {
-        clockEntry.chips -= 1;
+    // 2. 초읽기(타임칩) 구간 계산
+    // remainingElapsed가 정확히 chipMs의 배수일 때까지는 해당 칩 안에서 둔 것임
+    // 예: 30초(chipMs) 룰에서 30,000ms 소모 -> 0개 차감 / 30,001ms 소모 -> 1개 차감
+    const usedChips = Math.ceil(remainingElapsed / clockEntry.chipMs) - 1;
 
-        // 다음 수를 위해 초읽기 시간 초기화
-        clockEntry.chipMs = TIME_CHIP_MS;
+    if (usedChips > 0) {
+        clockEntry.chips -= usedChips;
     }
 
-    return clockEntry.chips < 0;
+    // 3. 시간패 판정
+    // 남은 칩이 0개 미만이 되면 부여된 모든 타임칩 시간을 초과한 것
+    if (clockEntry.chips < 0) {
+        clockEntry.chips = 0;
+        return true; // 시간패
+    }
+
+    return false; // 통과
 }
 
 function applyTurnClock(game, now = Date.now()) {
