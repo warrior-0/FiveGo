@@ -2,7 +2,7 @@ const BOARD_SIZE = 11;
 const WIN_SCORE = 5;
 const CHOICE_COUNT = 3;
 const MAX_BID = 3;
-const MAIN_TIME_MS = 5 * 60 * 1000;
+const MAIN_TIME_MS = 0;
 const TIME_CHIP_MS = 20 * 1000;
 const TIME_CHIP_COUNT = 0;
 
@@ -241,7 +241,7 @@ function selectAugments(game, socketId, selectedAugmentIds) {
         applyStartAugments(game, 'white');
         game.phase = 'playing';
         startTurnClock(game);
-        game.log.push('게임을 시작합니다. 각 플레이어는 기본 시간 5분과 20초 초읽기를 가집니다.');
+        game.log.push('게임을 시작합니다. 각 수는 20초 이내에 두어야 합니다.');
         checkWinner(game);
 
         if (!game.winner) {
@@ -499,36 +499,17 @@ function startTurnClock(game, now = Date.now()) {
         return;
     }
 
+    // 20초 초읽기 방식: 턴이 시작될 때마다 해당 플레이어의 초읽기 시간을 초기화
+    const color = game.turn;
+    game.clock[color].chipMs = TIME_CHIP_MS;
     game.clock.turnStartedAt = now;
 }
 
 function spendClockTime(clockEntry, elapsedMs) {
-    let remainingElapsed = Math.max(0, elapsedMs);
+    const remainingElapsed = Math.max(0, elapsedMs);
 
-    // 1. 본시간 차감
-    if (clockEntry.mainMs > 0) {
-        const spentMain = Math.min(clockEntry.mainMs, remainingElapsed);
-        clockEntry.mainMs -= spentMain;
-        remainingElapsed -= spentMain;
-    }
-
-    // 본시간 내에 착수한 경우
-    if (remainingElapsed <= 0) {
-        return false; // 패배 아님
-    }
-
-    // 2. 초읽기(타임칩) 구간 계산
-    // remainingElapsed가 정확히 chipMs의 배수일 때까지는 해당 칩 안에서 둔 것임
-    const usedChips = Math.ceil(remainingElapsed / clockEntry.chipMs) - 1;
-
-    if (usedChips > 0) {
-        clockEntry.chips -= usedChips;
-    }
-
-    // 3. 시간패 판정
-    // 남은 칩이 0개 미만이 되면 부여된 모든 타임칩 시간을 초과한 것
-    if (clockEntry.chips < 0) {
-        clockEntry.chips = 0;
+    // 20초 초읽기 방식: 한 수에 20초를 초과하면 즉시 시간패
+    if (remainingElapsed > clockEntry.chipMs) {
         return true; // 시간패
     }
 
@@ -558,9 +539,12 @@ function publicClockState(game) {
     const snapshot = JSON.parse(JSON.stringify(game.clock));
 
     if (game.phase === 'playing' && !game.winner && !game.draw && snapshot.turnStartedAt) {
-        const live = { clock: snapshot, turn: game.turn, phase: game.phase, winner: game.winner, log: [] };
-        applyTurnClock(live);
-        return live.clock;
+        const now = Date.now();
+        const elapsedMs = now - snapshot.turnStartedAt;
+        const color = game.turn;
+        
+        // 실시간 남은 초읽기 시간 계산
+        snapshot[color].chipMs = Math.max(0, snapshot[color].chipMs - elapsedMs);
     }
 
     return snapshot;
