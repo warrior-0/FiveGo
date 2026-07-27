@@ -12,7 +12,7 @@
             <h1>오둑</h1>
             <p id="status">로그인 확인 중...</p>
             <p>흑 <span id="blackScore">0</span> : 백 <span id="whiteScore">0</span></p>
-            <p id="clockInfo">제한시간: 기본 10분 + 30초 타임 칩 3개</p>
+            <p id="clockInfo">제한시간: 기본 5분 + 30초 타임 칩 3개</p>
             <p id="myColor">색상: 미정</p>
 
             <div id="matchPanel">
@@ -37,7 +37,7 @@
             <a id="leaveBtn" class="button-link" href="lobby.html">나가기</a>
         </section>
 
-        <section id="board" class="board" aria-label="13x13 오둑판"></section>
+        <section id="board" class="board" aria-label="11x11 오둑판"></section>
         <aside id="gameInfo" class="game-info hidden" aria-label="게임 정보"></aside>
     </main>
 
@@ -197,7 +197,7 @@
             const clockInfo = document.getElementById('clockInfo');
 
             if (!state.clock) {
-                clockInfo.textContent = '제한시간: 기본 10분 + 30초 타임 칩 3개';
+                clockInfo.textContent = '제한시간: 기본 5분 + 30초 타임 칩 3개';
                 return;
             }
 
