@@ -193,36 +193,24 @@
         }
 
 
-        let clockInterval = null;
+        // 클라이언트 타이머 렌더 루프
+        setInterval(() => {
+            if (!currentState || !currentState.clock) return;
+            
+            const clockInfo = document.getElementById('clockInfo');
+            const now = Date.now();
+            
+            const blackDisplay = calculateLiveClock(currentState.clock.black, currentState.turn === 'black' ? currentState.clock.turnStartedAt : null, now);
+            const whiteDisplay = calculateLiveClock(currentState.clock.white, currentState.turn === 'white' ? currentState.clock.turnStartedAt : null, now);
+            
+            clockInfo.innerHTML = `
+                <div>흑: ${blackDisplay}</div>
+                <div>백: ${whiteDisplay}</div>
+            `;
+        }, 200); // 0.2초마다 갱신하여 더 부드럽게 표시
 
         function renderClock(state) {
-            const clockInfo = document.getElementById('clockInfo');
-
-            if (!state.clock) {
-                clockInfo.textContent = '제한시간: 기본 5분 + 20초 초읽기';
-                return;
-            }
-
-            // 이전 인터벌 제거
-            if (clockInterval) clearInterval(clockInterval);
-
-            const updateDisplay = () => {
-                const now = Date.now();
-                const blackDisplay = calculateLiveClock(state.clock.black, state.turn === 'black' ? state.clock.turnStartedAt : null, now);
-                const whiteDisplay = calculateLiveClock(state.clock.white, state.turn === 'white' ? state.clock.turnStartedAt : null, now);
-                
-                clockInfo.innerHTML = `
-                    <div>흑: ${blackDisplay}</div>
-                    <div>백: ${whiteDisplay}</div>
-                `;
-            };
-
-            updateDisplay();
-            
-            // 게임이 진행 중일 때만 1초마다 갱신
-            if (state.phase === 'playing' && !state.winner && !state.draw) {
-                clockInterval = setInterval(updateDisplay, 1000);
-            }
+            // 이 함수는 이제 상단의 전역 setInterval에서 처리함
         }
 
         function calculateLiveClock(clockEntry, turnStartedAt, now) {
@@ -231,11 +219,15 @@
 
             if (turnStartedAt) {
                 let elapsedMs = now - turnStartedAt;
+                
+                // 본시간 차감
                 if (mainMs > 0) {
                     const spentMain = Math.min(mainMs, elapsedMs);
                     mainMs -= spentMain;
                     elapsedMs -= spentMain;
                 }
+                
+                // 초읽기 차감
                 if (elapsedMs > 0) {
                     chipMs = Math.max(0, chipMs - elapsedMs);
                 }
