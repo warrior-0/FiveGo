@@ -141,7 +141,7 @@ button:hover {
 .cell.black::after, .cell.white::after { content: ''; position: absolute; inset: 4px; border-radius: 50%; }
 .cell.black::after { background: #111; }
 .cell.white::after { background: #f8f8f8; border: 1px solid #aaa; }
-@media (max-width: 980px) { body { align-items: stretch; } .game-layout { display: flex; flex-direction: column; padding: 12px; } .panel, .game-info { width: 100%; max-height: none; } .board { align-self: center; grid-template-columns: repeat(13, 24px); grid-template-rows: repeat(13, 24px); } .cell { width: 24px; height: 24px; } }
+@media (max-width: 980px) { body { align-items: stretch; } .game-layout { display: flex; flex-direction: column; padding: 12px; } .panel, .game-info { width: 100%; max-height: none; } .board { align-self: center; grid-template-columns: repeat(11, 24px); grid-template-rows: repeat(11, 24px); } .cell { width: 24px; height: 24px; } }
 .hidden { display: none !important; }
 .augment-list { display: grid; gap: 8px; margin: 12px 0; max-height: 40vh; overflow-y: auto; padding-right: 4px; }
 .augment-card.compact { font-size: 13px; }
