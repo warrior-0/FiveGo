@@ -241,7 +241,7 @@ function selectAugments(game, socketId, selectedAugmentIds) {
         applyStartAugments(game, 'white');
         game.phase = 'playing';
         startTurnClock(game);
-        game.log.push('게임을 시작합니다. 각 플레이어는 기본 5분과 20초 초읽기를 가집니다.');
+        game.log.push('게임을 시작합니다. 각 플레이어는 기본 시간 5분과 20초 초읽기를 가집니다.');
         checkWinner(game);
 
         if (!game.winner) {
