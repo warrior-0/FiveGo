@@ -505,27 +505,28 @@ function startTurnClock(game, now = Date.now()) {
 function spendClockTime(clockEntry, elapsedMs) {
     let remainingElapsed = Math.max(0, elapsedMs);
 
+    // 본시간 차감
     if (clockEntry.mainMs > 0) {
         const spentMain = Math.min(clockEntry.mainMs, remainingElapsed);
         clockEntry.mainMs -= spentMain;
         remainingElapsed -= spentMain;
     }
 
-    while (remainingElapsed > 0 && clockEntry.chips > 0) {
-        const spentChip = Math.min(clockEntry.chipMs, remainingElapsed);
-        clockEntry.chipMs -= spentChip;
-        remainingElapsed -= spentChip;
-
-        if (clockEntry.chipMs <= 0) {
-            clockEntry.chips -= 1;
-
-            if (clockEntry.chips > 0) {
-                clockEntry.chipMs = TIME_CHIP_MS;
-            }
-        }
+    // 본시간이 남아있으면 시간패 없음
+    if (remainingElapsed <= 0) {
+        return false;
     }
 
-    return clockEntry.mainMs <= 0 && clockEntry.chips <= 0 && clockEntry.chipMs <= 0;
+    // 초읽기 판정
+    // 한 수가 초읽기 시간을 넘겼으면 칩 1개 소모
+    if (remainingElapsed > clockEntry.chipMs) {
+        clockEntry.chips -= 1;
+
+        // 다음 수를 위해 초읽기 시간 초기화
+        clockEntry.chipMs = TIME_CHIP_MS;
+    }
+
+    return clockEntry.chips < 0;
 }
 
 function applyTurnClock(game, now = Date.now()) {
