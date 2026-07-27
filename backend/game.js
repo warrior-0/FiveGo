@@ -2,7 +2,7 @@ const BOARD_SIZE = 11;
 const WIN_SCORE = 5;
 const CHOICE_COUNT = 3;
 const MAX_BID = 3;
-const MAIN_TIME_MS = 0;
+const MAIN_TIME_MS = 5 * 60 * 1000;
 const TIME_CHIP_MS = 20 * 1000;
 const TIME_CHIP_COUNT = 0;
 
@@ -241,7 +241,7 @@ function selectAugments(game, socketId, selectedAugmentIds) {
         applyStartAugments(game, 'white');
         game.phase = 'playing';
         startTurnClock(game);
-        game.log.push('게임을 시작합니다. 각 수는 20초 이내에 두어야 합니다.');
+        game.log.push('게임을 시작합니다. 기본 시간 5분 후 20초 초읽기가 시작됩니다.');
         checkWinner(game);
 
         if (!game.winner) {
@@ -506,9 +506,22 @@ function startTurnClock(game, now = Date.now()) {
 }
 
 function spendClockTime(clockEntry, elapsedMs) {
-    const remainingElapsed = Math.max(0, elapsedMs);
+    let remainingElapsed = Math.max(0, elapsedMs);
 
-    // 20초 초읽기 방식: 한 수에 20초를 초과하면 즉시 시간패
+    // 1. 본시간 차감
+    if (clockEntry.mainMs > 0) {
+        const spentMain = Math.min(clockEntry.mainMs, remainingElapsed);
+        clockEntry.mainMs -= spentMain;
+        remainingElapsed -= spentMain;
+    }
+
+    // 본시간 내에 착수한 경우
+    if (remainingElapsed <= 0) {
+        return false; // 패배 아님
+    }
+
+    // 2. 초읽기 구간 판정 (무제한 초읽기)
+    // 본시간을 다 쓴 후 남은 시간이 초읽기(chipMs)를 초과하면 시간패
     if (remainingElapsed > clockEntry.chipMs) {
         return true; // 시간패
     }
@@ -540,11 +553,19 @@ function publicClockState(game) {
 
     if (game.phase === 'playing' && !game.winner && !game.draw && snapshot.turnStartedAt) {
         const now = Date.now();
-        const elapsedMs = now - snapshot.turnStartedAt;
+        let elapsedMs = now - snapshot.turnStartedAt;
         const color = game.turn;
-        
-        // 실시간 남은 초읽기 시간 계산
-        snapshot[color].chipMs = Math.max(0, snapshot[color].chipMs - elapsedMs);
+        const clockEntry = snapshot[color];
+
+        if (clockEntry.mainMs > 0) {
+            const spentMain = Math.min(clockEntry.mainMs, elapsedMs);
+            clockEntry.mainMs -= spentMain;
+            elapsedMs -= spentMain;
+        }
+
+        if (elapsedMs > 0) {
+            clockEntry.chipMs = Math.max(0, clockEntry.chipMs - elapsedMs);
+        }
     }
 
     return snapshot;

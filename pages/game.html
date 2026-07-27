@@ -12,7 +12,7 @@
             <h1>오둑</h1>
             <p id="status">로그인 확인 중...</p>
             <p>흑 <span id="blackScore">0</span> : 백 <span id="whiteScore">0</span></p>
-            <p id="clockInfo">제한시간: 20초 초읽기</p>
+            <p id="clockInfo">제한시간: 기본 5분 + 20초 초읽기</p>
             <p id="myColor">색상: 미정</p>
 
             <div id="matchPanel">
@@ -197,7 +197,7 @@
             const clockInfo = document.getElementById('clockInfo');
 
             if (!state.clock) {
-                clockInfo.textContent = '제한시간: 20초 초읽기';
+                clockInfo.textContent = '제한시간: 기본 5분 + 20초 초읽기';
                 return;
             }
 
@@ -207,8 +207,14 @@
         }
 
         function formatClock(clock) {
+            const mainSeconds = Math.max(0, Math.ceil(clock.mainMs / 1000));
+
+            if (mainSeconds > 0) {
+                return `${formatSeconds(mainSeconds)}`;
+            }
+
             const chipSeconds = Math.max(0, Math.ceil(clock.chipMs / 1000));
-            return `${chipSeconds}초`;
+            return `초읽기 ${chipSeconds}초`;
         }
 
         function formatSeconds(totalSeconds) {
