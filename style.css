@@ -147,6 +147,7 @@ button:hover {
 .augment-card.compact { font-size: 13px; }
 .log { margin-top: 12px; padding: 10px; max-height: 180px; overflow-y: auto; background: #f7f7f7; border-radius: 8px; font-size: 13px; }
 .log p { margin: 4px 0; }
+.warning { color: #ff3b30; font-weight: bold; }
 .panel h2 { font-size: 16px; margin: 14px 0 8px; }
 .panel label { display: block; margin-bottom: 8px; }
 .panel select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; }

@@ -193,6 +193,8 @@
         }
 
 
+        let clockInterval = null;
+
         function renderClock(state) {
             const clockInfo = document.getElementById('clockInfo');
 
@@ -201,20 +203,56 @@
                 return;
             }
 
-            const blackClock = formatClock(state.clock.black);
-            const whiteClock = formatClock(state.clock.white);
-            clockInfo.textContent = `흑 시간 ${blackClock} / 백 시간 ${whiteClock}`;
+            // 이전 인터벌 제거
+            if (clockInterval) clearInterval(clockInterval);
+
+            const updateDisplay = () => {
+                const now = Date.now();
+                const blackDisplay = calculateLiveClock(state.clock.black, state.turn === 'black' ? state.clock.turnStartedAt : null, now);
+                const whiteDisplay = calculateLiveClock(state.clock.white, state.turn === 'white' ? state.clock.turnStartedAt : null, now);
+                
+                clockInfo.innerHTML = `
+                    <div>흑: ${blackDisplay}</div>
+                    <div>백: ${whiteDisplay}</div>
+                `;
+            };
+
+            updateDisplay();
+            
+            // 게임이 진행 중일 때만 1초마다 갱신
+            if (state.phase === 'playing' && !state.winner && !state.draw) {
+                clockInterval = setInterval(updateDisplay, 1000);
+            }
+        }
+
+        function calculateLiveClock(clockEntry, turnStartedAt, now) {
+            let mainMs = clockEntry.mainMs;
+            let chipMs = clockEntry.chipMs;
+
+            if (turnStartedAt) {
+                let elapsedMs = now - turnStartedAt;
+                if (mainMs > 0) {
+                    const spentMain = Math.min(mainMs, elapsedMs);
+                    mainMs -= spentMain;
+                    elapsedMs -= spentMain;
+                }
+                if (elapsedMs > 0) {
+                    chipMs = Math.max(0, chipMs - elapsedMs);
+                }
+            }
+
+            const mainSec = Math.max(0, Math.ceil(mainMs / 1000));
+            const chipSec = Math.max(0, Math.ceil(chipMs / 1000));
+
+            if (mainSec > 0) {
+                return `${formatSeconds(mainSec)} (초읽기 20초)`;
+            }
+            return `<span class="warning">초읽기 ${chipSec}초</span>`;
         }
 
         function formatClock(clock) {
-            const mainSeconds = Math.max(0, Math.ceil(clock.mainMs / 1000));
-
-            if (mainSeconds > 0) {
-                return `${formatSeconds(mainSeconds)}`;
-            }
-
-            const chipSeconds = Math.max(0, Math.ceil(clock.chipMs / 1000));
-            return `초읽기 ${chipSeconds}초`;
+            // 이 함수는 이제 renderClock 내부의 calculateLiveClock으로 대체됨
+            return '';
         }
 
         function formatSeconds(totalSeconds) {
