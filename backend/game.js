@@ -4,7 +4,7 @@ const CHOICE_COUNT = 3;
 const MAX_BID = 3;
 const MAIN_TIME_MS = 5 * 60 * 1000;
 const TIME_CHIP_MS = 20 * 1000;
-const TIME_CHIP_COUNT = 0;
+const TIME_CHIP_COUNT = 1;
 
 
 const AUGMENT_EFFECT_RULES = {
@@ -80,8 +80,8 @@ function pickAugmentChoices(deck) {
 
 function createClock() {
     return {
-        black: { mainMs: MAIN_TIME_MS, chips: TIME_CHIP_COUNT, chipMs: TIME_CHIP_MS },
-        white: { mainMs: MAIN_TIME_MS, chips: TIME_CHIP_COUNT, chipMs: TIME_CHIP_MS },
+        black: { mainMs: MAIN_TIME_MS, chipMs: TIME_CHIP_MS, inChip: false },
+        white: { mainMs: MAIN_TIME_MS, chipMs: TIME_CHIP_MS, inChip: false },
         turnStartedAt: null
     };
 }
@@ -499,14 +499,26 @@ function startTurnClock(game, now = Date.now()) {
         return;
     }
 
-    // 20초 초읽기 방식: 턴이 시작될 때마다 해당 플레이어의 초읽기 시간을 초기화
     const color = game.turn;
-    game.clock[color].chipMs = TIME_CHIP_MS;
+    const clockEntry = game.clock[color];
+    
+    // 턴이 시작될 때, 이미 초읽기 중이라면 초읽기 시간을 초기화
+    if (clockEntry.mainMs <= 0) {
+        clockEntry.chipMs = TIME_CHIP_MS;
+        clockEntry.inChip = true;
+    }
+    
     game.clock.turnStartedAt = now;
 }
 
-function spendClockTime(clockEntry, elapsedMs) {
-    let remainingElapsed = Math.max(0, elapsedMs);
+function applyTurnClock(game, now = Date.now()) {
+    if (game.phase !== 'playing' || game.winner || game.draw || !game.clock.turnStartedAt) return false;
+
+    const color = game.turn;
+    const clockEntry = game.clock[color];
+    const elapsedMs = now - game.clock.turnStartedAt;
+    
+    let remainingElapsed = elapsedMs;
 
     // 1. 본시간 차감
     if (clockEntry.mainMs > 0) {
@@ -515,31 +527,15 @@ function spendClockTime(clockEntry, elapsedMs) {
         remainingElapsed -= spentMain;
     }
 
-    // 본시간 내에 착수한 경우
-    if (remainingElapsed <= 0) {
-        return false; // 패배 아님
+    // 2. 초읽기 처리
+    if (remainingElapsed > 0) {
+        clockEntry.inChip = true;
+        clockEntry.chipMs -= remainingElapsed;
     }
 
-    // 2. 초읽기 구간 판정 (무제한 초읽기)
-    // 본시간을 다 쓴 후 남은 시간이 초읽기(chipMs)를 초과하면 시간패
-    if (remainingElapsed > clockEntry.chipMs) {
-        return true; // 시간패
-    }
-
-    return false; // 통과
-}
-
-function applyTurnClock(game, now = Date.now()) {
-    if (game.phase !== 'playing' || game.winner || game.draw || !game.clock.turnStartedAt) return false;
-
-    const color = game.turn;
-    const elapsedMs = now - game.clock.turnStartedAt;
-    
-    // 시간 소모 계산
-    const isTimeout = spendClockTime(game.clock[color], elapsedMs);
     game.clock.turnStartedAt = now;
 
-    if (isTimeout) {
+    if (clockEntry.chipMs <= 0) {
         game.winner = opponent(color);
         game.draw = false;
         game.phase = 'finished';
@@ -567,6 +563,7 @@ function publicClockState(game) {
         }
 
         if (elapsedMs > 0) {
+            clockEntry.inChip = true;
             clockEntry.chipMs = Math.max(0, clockEntry.chipMs - elapsedMs);
         }
     }

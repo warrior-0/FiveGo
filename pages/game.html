@@ -216,6 +216,7 @@
         function calculateLiveClock(clockEntry, turnStartedAt, now) {
             let mainMs = clockEntry.mainMs;
             let chipMs = clockEntry.chipMs;
+            let inChip = clockEntry.inChip || mainMs <= 0;
 
             if (turnStartedAt) {
                 let elapsedMs = now - turnStartedAt;
@@ -229,6 +230,7 @@
                 
                 // 초읽기 차감
                 if (elapsedMs > 0) {
+                    inChip = true;
                     chipMs = Math.max(0, chipMs - elapsedMs);
                 }
             }
@@ -236,7 +238,7 @@
             const mainSec = Math.max(0, Math.ceil(mainMs / 1000));
             const chipSec = Math.max(0, Math.ceil(chipMs / 1000));
 
-            if (mainSec > 0) {
+            if (!inChip) {
                 return `${formatSeconds(mainSec)} (초읽기 20초)`;
             }
             return `<span class="warning">초읽기 ${chipSec}초</span>`;
