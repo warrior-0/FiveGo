@@ -535,22 +535,18 @@ function applyTurnClock(game, now = Date.now()) {
     const color = game.turn;
     const elapsedMs = now - game.clock.turnStartedAt;
     
-    // 복사본을 만들어 시간패 여부만 먼저 확인 (실제 차감은 착수 시나 주기적 업데이트 시 진행)
-    const clockCopy = JSON.parse(JSON.stringify(game.clock[color]));
-    if (spendClockTime(clockCopy, elapsedMs)) {
-        // 실제 시간패 처리
-        game.clock[color] = clockCopy;
+    // 시간 소모 계산
+    const isTimeout = spendClockTime(game.clock[color], elapsedMs);
+    game.clock.turnStartedAt = now;
+
+    if (isTimeout) {
         game.winner = opponent(color);
         game.draw = false;
         game.phase = 'finished';
         game.clock.turnStartedAt = null;
-        game.log.push(`${color === 'black' ? '흑' : '백'} 시간패: ${game.winner === 'black' ? '흑' : '백'} 승리`);
+        game.log.push(`${color === 'black' ? '흑' : '백'} 시간패: ${opponent(color) === 'black' ? '흑' : '백'} 승리`);
         return true;
     }
-
-    // 시간패가 아니라면 실제 시간 차감 및 기준점 업데이트
-    spendClockTime(game.clock[color], elapsedMs);
-    game.clock.turnStartedAt = now;
 
     return false;
 }

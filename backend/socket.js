@@ -113,6 +113,7 @@ function ensureClockInterval(io, roomId, game) {
         const isTimedOut = applyTurnClock(liveGame);
 
         if (isTimedOut) {
+            // 시간패 발생 시 즉시 상태 전송 및 인터벌 종료
             await emitState(io, roomId, liveGame);
             clearInterval(intervalId);
             clockIntervals.delete(roomId);
@@ -120,6 +121,7 @@ function ensureClockInterval(io, roomId, game) {
         }
 
         // 매 초마다 갱신된 시간 상태를 클라이언트에 전송
+        // 이 때 클라이언트의 currentState.clock이 갱신되어 타이머가 동기화됨
         io.to(roomId).emit('gameState', publicGameState(liveGame));
     }, 1000);
 
