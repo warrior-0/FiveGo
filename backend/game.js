@@ -381,14 +381,14 @@ function finishByScore(game) {
 
     if (game.scores.black > game.scores.white) {
         game.winner = 'black';
-        game.log.push(`착수 가능한 포획수가 없어 현재 점수로 정산: 흑 승리 (${game.scores.black} vs ${game.scores.white})`);
+        game.log.push(`양측 모두 더 이상 둘 수 있는 수가 없어 현재 점수로 정산: 흑 승리 (${game.scores.black} vs ${game.scores.white})`);
     } else if (game.scores.white > game.scores.black) {
         game.winner = 'white';
-        game.log.push(`착수 가능한 포획수가 없어 현재 점수로 정산: 백 승리 (${game.scores.white} vs ${game.scores.black})`);
+        game.log.push(`양측 모두 더 이상 둘 수 있는 수가 없어 현재 점수로 정산: 백 승리 (${game.scores.white} vs ${game.scores.black})`);
     } else {
         // 동점인 경우 흑 승리
         game.winner = 'black';
-        game.log.push(`착수 가능한 포획수가 없고 동점(${game.scores.black})이므로 흑 승리 판정`);
+        game.log.push(`양측 모두 더 이상 둘 수 있는 수가 없고 동점(${game.scores.black})이므로 흑 승리 판정`);
     }
 }
 
@@ -403,7 +403,7 @@ function resolveTurnAvailability(game) {
         return;
     }
 
-    if (hasCapturingMove(game, next)) {
+    if (hasLegalMove(game, next)) {
         game.log.push(`${current === 'black' ? '흑' : '백'}은 둘 수 있는 수가 없어 자동 패스되었습니다.`);
         game.turn = next;
         startTurnClock(game);
