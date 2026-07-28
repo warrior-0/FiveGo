@@ -74,12 +74,7 @@ function pruneWaiting() {
 async function saveResultIfNeeded(game) {
     if (game.resultSaved) return;
 
-    if (game.draw) {
-        const playerIds = [game.players.black.user.id, game.players.white.user.id];
-        await db.query('UPDATE users SET draws = draws + 1 WHERE id IN (?, ?)', playerIds);
-        game.resultSaved = true;
-        return;
-    }
+
 
     if (!game.winner) return;
 
@@ -103,7 +98,7 @@ function ensureClockInterval(io, roomId, game) {
     const intervalId = setInterval(async () => {
         const liveGame = games.get(roomId);
 
-        if (!liveGame || liveGame.phase !== 'playing' || liveGame.winner || liveGame.draw) {
+        if (!liveGame || liveGame.phase !== 'playing' || liveGame.winner) {
             clearInterval(intervalId);
             clockIntervals.delete(roomId);
             return;
@@ -162,7 +157,7 @@ async function handlePlayerExit(io, socket, reason = '상대가 방을 나갔습
 
     const color = getColorBySocket(game, socket.id);
 
-    if (color && game.phase === 'playing' && !game.winner && !game.draw) {
+    if (color && game.phase === 'playing' && !game.winner) {
         game.winner = color === 'black' ? 'white' : 'black';
         game.phase = 'finished';
         game.log.push(`${game.players[color].user.nickname} 이탈: ${game.winner === 'black' ? '흑' : '백'} 승리`);

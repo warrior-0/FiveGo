@@ -129,7 +129,6 @@ function createGame(playerA, playerB) {
             white: 0
         },
         winner: null,
-        draw: false,
         clock: createClock(),
         lastMove: null,
         log: ['입찰을 진행하세요. 더 많이 점수를 양보한 사람이 흑을 잡습니다.']
@@ -382,14 +381,14 @@ function finishByScore(game) {
 
     if (game.scores.black > game.scores.white) {
         game.winner = 'black';
-        game.log.push(`착수 가능한 포획수가 없어 현재 점수로 정산: 흑 승리`);
+        game.log.push(`착수 가능한 포획수가 없어 현재 점수로 정산: 흑 승리 (${game.scores.black} vs ${game.scores.white})`);
     } else if (game.scores.white > game.scores.black) {
         game.winner = 'white';
-        game.log.push(`착수 가능한 포획수가 없어 현재 점수로 정산: 백 승리`);
+        game.log.push(`착수 가능한 포획수가 없어 현재 점수로 정산: 백 승리 (${game.scores.white} vs ${game.scores.black})`);
     } else {
-        game.winner = null;
-        game.draw = true;
-        game.log.push('착수 가능한 포획수가 없어 현재 점수로 정산: 무승부');
+        // 동점인 경우 흑 승리
+        game.winner = 'black';
+        game.log.push(`착수 가능한 포획수가 없고 동점(${game.scores.black})이므로 흑 승리 판정`);
     }
 }
 
@@ -421,13 +420,15 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
     let scoreDelta = capturedCount;
     let skipTurn = false;
 
-    // 대기 증강 활성화 여부 확인
-    const shouldActivateReserve = !capturedPlayer.reserveActivated && capturedPlayer.reserveAugments.length;
-    
-    // 현재 활성화된 증강 + 활성화될 대기 증강 목록 합치기 (단, 순수하게 효과 처리를 위한 목록)
+    // 현재 이미 활성화된 증강들만 이번 턴에 처리 대상으로 설정
     const augmentsToProcess = [...capturedPlayer.activeAugments];
-    if (shouldActivateReserve) {
-        augmentsToProcess.push(...capturedPlayer.reserveAugments);
+
+    // 대기 증강 활성화 여부 확인: 아직 활성화 안 됐고 대기 중인 증강이 있다면 활성화만 시킴
+    if (!capturedPlayer.reserveActivated && capturedPlayer.reserveAugments.length > 0) {
+        capturedPlayer.reserveActivated = true;
+        // 대기 증강을 활성 증강 목록에 추가 (이번 augmentsToProcess에는 포함되지 않음)
+        capturedPlayer.activeAugments.push(...capturedPlayer.reserveAugments);
+        game.log.push(`${capturedPlayer.user.nickname}의 대기 증강이 활성화되었습니다! (다음 포획부터 적용)`);
     }
 
     // 1. Capture-first 타이밍의 증강 효과들을 먼저 처리
@@ -512,7 +513,7 @@ function startTurnClock(game, now = Date.now()) {
 }
 
 function applyTurnClock(game, now = Date.now()) {
-    if (game.phase !== 'playing' || game.winner || game.draw || !game.clock.turnStartedAt) return false;
+    if (game.phase !== 'playing' || game.winner || !game.clock.turnStartedAt) return false;
 
     const color = game.turn;
     const clockEntry = game.clock[color];
@@ -537,7 +538,6 @@ function applyTurnClock(game, now = Date.now()) {
 
     if (clockEntry.chipMs <= 0) {
         game.winner = opponent(color);
-        game.draw = false;
         game.phase = 'finished';
         game.clock.turnStartedAt = null;
         game.log.push(`${color === 'black' ? '흑' : '백'} 시간패: ${opponent(color) === 'black' ? '흑' : '백'} 승리`);
@@ -550,7 +550,7 @@ function applyTurnClock(game, now = Date.now()) {
 function publicClockState(game) {
     const snapshot = JSON.parse(JSON.stringify(game.clock));
 
-    if (game.phase === 'playing' && !game.winner && !game.draw && snapshot.turnStartedAt) {
+    if (game.phase === 'playing' && !game.winner && snapshot.turnStartedAt) {
         const now = Date.now();
         let elapsedMs = now - snapshot.turnStartedAt;
         const color = game.turn;
@@ -576,19 +576,27 @@ function checkWinner(game) {
     const whiteWon = game.scores.white >= WIN_SCORE;
 
     if (blackWon && whiteWon) {
-        game.winner = game.scores.black >= game.scores.white ? 'black' : 'white';
+        if (game.scores.black > game.scores.white) {
+            game.winner = 'black';
+            game.log.push(`양측 모두 5점 도달, 점수가 더 높은 흑 승리 (${game.scores.black} vs ${game.scores.white})`);
+        } else if (game.scores.white > game.scores.black) {
+            game.winner = 'white';
+            game.log.push(`양측 모두 5점 도달, 점수가 더 높은 백 승리 (${game.scores.white} vs ${game.scores.black})`);
+        } else {
+            game.winner = 'black';
+            game.log.push(`양측 모두 5점 동점(${game.scores.black})이므로 흑 승리 판정`);
+        }
     } else if (blackWon) {
         game.winner = 'black';
+        game.log.push(`흑 ${game.scores.black}점 도달: 흑 승리`);
     } else if (whiteWon) {
         game.winner = 'white';
+        game.log.push(`백 ${game.scores.white}점 도달: 백 승리`);
     }
-
-    if (game.winner) game.draw = false;
 
     if (game.winner) {
         game.phase = 'finished';
         game.clock.turnStartedAt = null;
-        game.log.push(`${game.winner === 'black' ? '흑' : '백'} 승리`);
     }
 }
 
@@ -676,7 +684,6 @@ function publicGameState(game) {
         turn: game.turn,
         scores: game.scores,
         winner: game.winner,
-        draw: game.draw,
         clock: publicClockState(game),
         lastMove: game.lastMove,
         timeRule: {

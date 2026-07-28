@@ -178,8 +178,6 @@
 
             if (state.winner) {
                 document.getElementById('status').textContent = `${colorName(state.winner)} 승리!`;
-            } else if (state.draw) {
-                document.getElementById('status').textContent = '무승부로 종료';
             } else if (state.phase === 'finished') {
                 document.getElementById('status').textContent = '게임 종료';
             } else if (state.phase === 'bidding') {

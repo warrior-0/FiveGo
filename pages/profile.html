@@ -7,7 +7,7 @@
 <script>
 requireLogin().then(async () => {
  const { user } = await apiRequest('/api/user/profile');
- document.getElementById('profileCard').innerHTML = `<p>닉네임: ${user.nickname}</p><p>Elo: ${user.rank_score}</p><p>전적: ${user.wins}승 ${user.losses}패 ${user.draws}무</p>`;
+ document.getElementById('profileCard').innerHTML = `<p>닉네임: ${user.nickname}</p><p>Elo: ${user.rank_score}</p><p>전적: ${user.wins}승 ${user.losses}패</p>`;
 });
 </script>
 </body></html>
