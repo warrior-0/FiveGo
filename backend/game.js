@@ -414,7 +414,12 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
         game.log.push(`${capturedPlayer.user.nickname}의 대기 증강(${names})이 활성화되었습니다!`);
     }
 
-    // 1. Capture-first 타이밍의 증강 효과들을 먼저 처리
+    // 1. Capture-first 타이밍의 증강 효과들을 처리
+    // 판정 기준을 고정하기 위해 현재 점수와 원래 포획 수를 상수로 유지
+    const currentCapturerScore = game.scores[capturingColor];
+    const currentCapturedScore = game.scores[capturedColor];
+    const originalCapturedCount = capturedCount;
+
     for (const augment of augmentsToProcess) {
         if (capturedPlayer.triggeredAugmentIds.includes(augment.id)) continue;
         if (augment.timing !== 'capture-first') continue;
@@ -422,14 +427,14 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
         // 효과 발동 조건 확인 및 처리
         if (augment.effect === 'capture_score_reduce') {
             scoreDelta = Math.max(0, scoreDelta - 1);
-            game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 상대 획득 점수 -1`);
+            game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 상대 획득 예정 점수 -1`);
             capturedPlayer.triggeredAugmentIds.push(augment.id);
         } else if (augment.effect === 'gain_one_on_captured') {
             game.scores[capturedColor] += 1;
             game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 반격 1점 획득`);
             capturedPlayer.triggeredAugmentIds.push(augment.id);
         } else if (augment.effect === 'reduce_multi_capture_score') {
-            if (capturedCount >= 2) {
+            if (originalCapturedCount >= 2) {
                 scoreDelta = Math.max(0, scoreDelta - 1);
                 game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 다중 포획 점수 -1`);
                 capturedPlayer.triggeredAugmentIds.push(augment.id);
@@ -439,22 +444,22 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
             game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 포획 점수 최대 2점`);
             capturedPlayer.triggeredAugmentIds.push(augment.id);
         } else if (augment.effect === 'gain_one_if_low_score') {
-            if (game.scores[capturedColor] <= 2) {
+            if (currentCapturedScore <= 2) {
                 game.scores[capturedColor] += 1;
                 game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 버티기 1점 획득`);
                 capturedPlayer.triggeredAugmentIds.push(augment.id);
             }
         } else if (augment.effect === 'reduce_leading_capturer_score') {
-            // 비교 시점: 상대가 이번 포획으로 얻을 점수(scoreDelta)를 합산한 결과가 내 현재 점수보다 높은지 확인
-            if (game.scores[capturingColor] + scoreDelta > game.scores[capturedColor]) {
-                game.scores[capturingColor] = Math.max(0, game.scores[capturingColor] - 1);
-                game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 앞선 상대 점수 -1`);
+            // 판정 기준: 포획 전 점수 + 원래 포획 수가 내 점수보다 높은지 확인
+            if (currentCapturerScore + originalCapturedCount > currentCapturedScore) {
+                // 상대의 기존 점수가 아닌, 이번에 얻을 점수(scoreDelta)에서 차감
+                scoreDelta = Math.max(0, scoreDelta - 1);
+                game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 앞선 상대의 획득 예정 점수 -1`);
                 capturedPlayer.triggeredAugmentIds.push(augment.id);
             }
         } else if (augment.effect === 'gain_one_if_behind_on_activate') {
-            // 비교 시점: 상대가 이번 포획으로 얻을 점수(scoreDelta)를 합산한 결과가 내 현재 점수보다 높은지 확인
-            // 만약 reduce_leading_capturer_score가 먼저 발동되어 상대 점수가 깎였다면, 그 깎인 점수를 기준으로 비교하게 됨
-            if (game.scores[capturingColor] + scoreDelta > game.scores[capturedColor]) {
+            // 판정 기준: 포획 전 점수 + 원래 포획 수가 내 점수보다 높은지 확인 (다른 증강의 결과에 영향을 받지 않음)
+            if (currentCapturerScore + originalCapturedCount > currentCapturedScore) {
                 game.scores[capturedColor] += 1;
                 game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
                 capturedPlayer.triggeredAugmentIds.push(augment.id);
