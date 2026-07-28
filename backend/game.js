@@ -409,6 +409,11 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
     // 대기 증강 활성화 여부 확인: 아직 활성화 안 됐고 대기 중인 증강이 있다면 활성화 시도
     const willActivateReserve = !capturedPlayer.reserveActivated && capturedPlayer.reserveAugments.length > 0;
 
+    if (willActivateReserve) {
+        const names = capturedPlayer.reserveAugments.map((a) => a.name).join(', ');
+        game.log.push(`${capturedPlayer.user.nickname}의 대기 증강(${names})이 활성화되었습니다!`);
+    }
+
     // 1. Capture-first 타이밍의 증강 효과들을 먼저 처리
     for (const augment of augmentsToProcess) {
         if (capturedPlayer.triggeredAugmentIds.includes(augment.id)) continue;
@@ -440,12 +445,15 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
                 capturedPlayer.triggeredAugmentIds.push(augment.id);
             }
         } else if (augment.effect === 'reduce_leading_capturer_score') {
+            // 비교 시점: 상대가 이번 포획으로 얻을 점수(scoreDelta)를 합산한 결과가 내 현재 점수보다 높은지 확인
             if (game.scores[capturingColor] + scoreDelta > game.scores[capturedColor]) {
                 game.scores[capturingColor] = Math.max(0, game.scores[capturingColor] - 1);
                 game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 앞선 상대 점수 -1`);
                 capturedPlayer.triggeredAugmentIds.push(augment.id);
             }
         } else if (augment.effect === 'gain_one_if_behind_on_activate') {
+            // 비교 시점: 상대가 이번 포획으로 얻을 점수(scoreDelta)를 합산한 결과가 내 현재 점수보다 높은지 확인
+            // 만약 reduce_leading_capturer_score가 먼저 발동되어 상대 점수가 깎였다면, 그 깎인 점수를 기준으로 비교하게 됨
             if (game.scores[capturingColor] + scoreDelta > game.scores[capturedColor]) {
                 game.scores[capturedColor] += 1;
                 game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
@@ -459,7 +467,6 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
         const reserveAugments = [...capturedPlayer.reserveAugments];
         capturedPlayer.reserveActivated = true;
         capturedPlayer.activeAugments.push(...reserveAugments);
-        game.log.push(`${capturedPlayer.user.nickname}의 대기 증강이 활성화되었습니다! (다음 포획부터 적용)`);
         
         // 대기 증강 중 'start' 타이밍(즉시 효과) 처리
         activateImmediateAugments(game, capturedColor, reserveAugments);

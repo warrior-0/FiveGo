@@ -305,7 +305,7 @@
                 ? `<p>증강 준비: ${player.ready ? '완료' : '대기 중'}</p>`
                 : '';
             const startAugments = renderAugmentList('활성화 증강', player.activeAugments, player.triggeredAugmentIds);
-            const captureAugments = renderAugmentList(player.reserveActivated ? '활성화 완료된 대기 증강' : '대기 증강', player.reserveAugments, player.triggeredAugmentIds);
+            const captureAugments = renderAugmentList(player.reserveActivated ? '활성화 완료된 대기 증강' : '대기 증강', player.reserveAugments, player.triggeredAugmentIds, true);
             return `
                 <article class="player-info">
                     <h2>${colorName(color)} - ${player.user.nickname}</h2>
@@ -316,8 +316,10 @@
             `;
         }
 
-        function renderAugmentList(title, augments, triggeredIds = []) {
-            if (!augments?.length) return `<p>${title}: 없음</p>`;
+        function renderAugmentList(title, augments, triggeredIds = [], hideIfEmpty = false) {
+            if (!augments?.length) {
+                return hideIfEmpty ? '' : `<p>${title}: 없음</p>`;
+            }
 
             return `
                 <div class="augment-status">
