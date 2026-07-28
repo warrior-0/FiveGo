@@ -375,22 +375,7 @@ function hasCapturingMove(game, color) {
     return Boolean(findMove(game, color, (result) => result.captured > 0));
 }
 
-function finishByScore(game) {
-    game.phase = 'finished';
-    game.clock.turnStartedAt = null;
 
-    if (game.scores.black > game.scores.white) {
-        game.winner = 'black';
-        game.log.push(`양측 모두 더 이상 둘 수 있는 수가 없어 현재 점수로 정산: 흑 승리 (${game.scores.black} vs ${game.scores.white})`);
-    } else if (game.scores.white > game.scores.black) {
-        game.winner = 'white';
-        game.log.push(`양측 모두 더 이상 둘 수 있는 수가 없어 현재 점수로 정산: 백 승리 (${game.scores.white} vs ${game.scores.black})`);
-    } else {
-        // 동점인 경우 흑 승리
-        game.winner = 'black';
-        game.log.push(`양측 모두 더 이상 둘 수 있는 수가 없고 동점(${game.scores.black})이므로 흑 승리 판정`);
-    }
-}
 
 function resolveTurnAvailability(game) {
     if (game.phase !== 'playing' || game.winner) return;
@@ -409,8 +394,6 @@ function resolveTurnAvailability(game) {
         startTurnClock(game);
         return;
     }
-
-    finishByScore(game);
 }
 
 function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount) {
