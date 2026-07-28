@@ -406,13 +406,8 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
     // 현재 이미 활성화된 증강들만 이번 턴에 처리 대상으로 설정
     const augmentsToProcess = [...capturedPlayer.activeAugments];
 
-    // 대기 증강 활성화 여부 확인: 아직 활성화 안 됐고 대기 중인 증강이 있다면 활성화만 시킴
-    if (!capturedPlayer.reserveActivated && capturedPlayer.reserveAugments.length > 0) {
-        capturedPlayer.reserveActivated = true;
-        // 대기 증강을 활성 증강 목록에 추가 (이번 augmentsToProcess에는 포함되지 않음)
-        capturedPlayer.activeAugments.push(...capturedPlayer.reserveAugments);
-        game.log.push(`${capturedPlayer.user.nickname}의 대기 증강이 활성화되었습니다! (다음 포획부터 적용)`);
-    }
+    // 대기 증강 활성화 여부 확인: 아직 활성화 안 됐고 대기 중인 증강이 있다면 활성화 시도
+    const willActivateReserve = !capturedPlayer.reserveActivated && capturedPlayer.reserveAugments.length > 0;
 
     // 1. Capture-first 타이밍의 증강 효과들을 먼저 처리
     for (const augment of augmentsToProcess) {
@@ -459,12 +454,12 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
         }
     }
 
-    // 2. 모든 capture-first 효과 처리 후 대기 증강을 정식으로 활성화하고 즉시 효과(start) 처리
-    if (shouldActivateReserve) {
+    // 2. 대기 증강 활성화 처리
+    if (willActivateReserve) {
         const reserveAugments = [...capturedPlayer.reserveAugments];
         capturedPlayer.reserveActivated = true;
         capturedPlayer.activeAugments.push(...reserveAugments);
-        game.log.push(`${capturedPlayer.user.nickname}의 대기 증강이 활성화되었습니다.`);
+        game.log.push(`${capturedPlayer.user.nickname}의 대기 증강이 활성화되었습니다! (다음 포획부터 적용)`);
         
         // 대기 증강 중 'start' 타이밍(즉시 효과) 처리
         activateImmediateAugments(game, capturedColor, reserveAugments);
