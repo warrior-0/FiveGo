@@ -246,6 +246,44 @@ button:disabled { cursor: not-allowed; }
 .augment-detail-btn:hover {
     background: #0056b3 !important;
 }
+
+.active-queue-container {
+    margin: 8px 0;
+    padding: 10px;
+    background: #f0f7ff;
+    border: 1px solid #007aff;
+    border-radius: 8px;
+}
+.active-queue-container h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    color: #007aff;
+}
+.queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.queue-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    background: white;
+    border-radius: 4px;
+    font-size: 13px;
+    border-left: 4px solid #ccc;
+}
+.queue-item.black { border-left-color: #333; }
+.queue-item.white { border-left-color: #aaa; }
+.queue-index {
+    font-weight: bold;
+    color: #007aff;
+    min-width: 18px;
+}
+.queue-name { flex-grow: 1; font-weight: 500; }
+.queue-owner { font-size: 11px; color: #666; }
+
 .augment-summary-card p { margin: 0; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .augment-summary-card span { font-weight: bold; color: #555; }
 .queue-summary { display: none; }

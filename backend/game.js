@@ -461,34 +461,51 @@ function activateAugment(game, socketId, augmentId) {
 }
 
 function processAugmentQueue(game, event) {
-    let restarted = true;
+    if (game.augmentQueue.length > 0) {
+        game.log.push(`증강 대기열 확인 중... (총 ${game.augmentQueue.length}개)`);
+    }
 
-    while (restarted) {
-        restarted = false;
+    const toRemoveIndices = [];
 
-        for (let index = 0; index < game.augmentQueue.length; index += 1) {
-            if (game.winner) return;
+    for (let index = 0; index < game.augmentQueue.length; index += 1) {
+        if (game.winner) break;
 
-            const entry = game.augmentQueue[index];
+        const entry = game.augmentQueue[index];
+        const player = game.players[entry.color];
 
-            if (!canFireAugment(entry.augment, event)) continue;
+        if (!canFireAugment(entry.augment, event)) {
+            // 발동 조건이 아니면 그냥 넘어감 (로그는 생략하여 노이즈 감소)
+            continue;
+        }
 
-            const counterColor = opponent(entry.color);
-            const counterPlayer = game.players[counterColor];
-            if (counterPlayer.counterPending && entry.augment.effect !== 'counter') {
-                counterPlayer.counterPending = false;
-                markAugmentTriggered(game.players[entry.color], entry.augment);
-                game.log.push(`${counterPlayer.user.nickname}의 카운터 적용: ${game.players[entry.color].user.nickname}의 ${entry.augment.name} 효과를 대신 받습니다.`);
-                entry.color = counterColor;
-            }
+        game.log.push(`[${colorName(entry.color)}] ${entry.augment.name} 조건 확인...`);
 
-            if (!fireAugment(game, entry, event)) continue;
+        const counterColor = opponent(entry.color);
+        const counterPlayer = game.players[counterColor];
+        
+        // 카운터 처리
+        if (counterPlayer.counterPending && entry.augment.effect !== 'counter') {
+            counterPlayer.counterPending = false;
+            markAugmentTriggered(player, entry.augment);
+            game.log.push(`${counterPlayer.user.nickname}의 카운터! ${player.user.nickname}의 ${entry.augment.name} 효과를 가로챕니다.`);
+            entry.color = counterColor;
+        }
 
-            game.augmentQueue.splice(index, 1);
-            restarted = true;
-            break;
+        if (fireAugment(game, entry, event)) {
+            toRemoveIndices.push(index);
+        } else {
+            game.log.push(`- ${entry.augment.name}: 발동 조건 미충족`);
         }
     }
+
+    // 발동된 증강들 제거 (뒤에서부터 제거해야 인덱스가 꼬이지 않음)
+    for (let i = toRemoveIndices.length - 1; i >= 0; i--) {
+        game.augmentQueue.splice(toRemoveIndices[i], 1);
+    }
+}
+
+function colorName(color) {
+    return color === 'black' ? '흑' : '백';
 }
 
 function startReserveSelectionIfNeeded(game, capturedColor) {

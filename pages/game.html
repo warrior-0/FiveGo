@@ -52,6 +52,10 @@
             </div>
 
             <div id="blackAugmentInfo"></div>
+            <div id="activeQueue" class="active-queue-container hidden">
+                <h3>발동 대기열</h3>
+                <div id="queueList" class="queue-list"></div>
+            </div>
             <div id="log" class="log"></div>
             <a id="leaveBtn" class="button-link" href="lobby.html">나가기</a>
         </section>
@@ -419,6 +423,22 @@
         }
 
         function renderAugmentSummary(state) {
+            // 발동 대기열(큐) 렌더링
+            const queueContainer = document.getElementById('activeQueue');
+            const queueList = document.getElementById('queueList');
+            if (state.augmentQueue && state.augmentQueue.length > 0) {
+                queueContainer.classList.remove('hidden');
+                queueList.innerHTML = state.augmentQueue.map((entry, idx) => `
+                    <div class="queue-item ${entry.color}">
+                        <span class="queue-index">${idx + 1}</span>
+                        <span class="queue-name">${entry.augment.name}</span>
+                        <span class="queue-owner">(${colorName(entry.color)})</span>
+                    </div>
+                `).join('');
+            } else {
+                queueContainer.classList.add('hidden');
+            }
+
             ['black', 'white'].forEach((color) => {
                 const player = state.players[color];
                 const containerId = color === 'black' ? 'blackAugmentInfo' : 'whiteAugmentInfo';
