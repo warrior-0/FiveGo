@@ -66,7 +66,7 @@
         <aside id="gameInfo" class="game-info" aria-label="게임 정보">
             <div id="playerInfoContainer"></div>
             <div id="whiteAugmentInfo"></div>
-            <div id="activeQueue" class="active-queue-container hidden">
+            <div id="activeQueue" class="active-queue-container">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <h3 style="margin: 0;">발동 대기열</h3>
                     <button type="button" data-modal="queue" class="augment-detail-btn">상세확인</button>
@@ -431,7 +431,6 @@
             const queueContainer = document.getElementById('activeQueue');
             const queueList = document.getElementById('queueList');
             if (state.augmentQueue && state.augmentQueue.length > 0) {
-                queueContainer.classList.remove('hidden');
                 queueList.innerHTML = state.augmentQueue.map((entry, idx) => `
                     <div class="queue-item ${entry.color}">
                         <span class="queue-index">${idx + 1}</span>
@@ -440,7 +439,7 @@
                     </div>
                 `).join('');
             } else {
-                queueContainer.classList.add('hidden');
+                queueList.innerHTML = '<p style="font-size: 12px; color: #999; text-align: center; margin: 10px 0;">현재 비어 있음</p>';
             }
 
             ['black', 'white'].forEach((color) => {

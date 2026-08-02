@@ -832,8 +832,9 @@ function placeStone(game, color, x, y) {
 function publicGameState(game) {
     const revealBids = game.phase !== 'bidding';
     const revealAugments = game.phase !== 'bidding';
-    const publicSeat = (seat) => {
+    const publicSeat = (seat, seatColor) => {
         if (!seat) return null;
+        const color = seatColor || (game.players.black === seat ? 'black' : (game.players.white === seat ? 'white' : null));
 
         return {
             ...seat,
@@ -848,7 +849,7 @@ function publicGameState(game) {
             reservePending: revealAugments ? seat.reservePending : false,
             handAugments: revealAugments ? seat.handAugments : [],
             triggeredAugments: revealAugments ? seat.triggeredAugments : [],
-            goldenSnitchRemainingTurns: seat.goldenSnitchUntilTurn !== null ? Math.max(0, seat.goldenSnitchUntilTurn - game.turnCounts[color]) : undefined
+            goldenSnitchRemainingTurns: (seat.goldenSnitchUntilTurn !== null && color) ? Math.max(0, seat.goldenSnitchUntilTurn - game.turnCounts[color]) : undefined
         };
     };
 
@@ -856,8 +857,8 @@ function publicGameState(game) {
         phase: game.phase,
         board: game.board,
         players: {
-            black: publicSeat(game.players.black),
-            white: publicSeat(game.players.white)
+            black: publicSeat(game.players.black, 'black'),
+            white: publicSeat(game.players.white, 'white')
         },
         seats: {
             a: publicSeat(game.seats.a),
