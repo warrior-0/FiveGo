@@ -33,8 +33,8 @@
                 <button id="augmentBtn">증강 확정</button>
             </div>
 
+            <div id="blackAugmentInfo"></div>
             <div id="log" class="log"></div>
-            <a id="leaveBtn" class="button-link" href="lobby.html">나가기</a>
         </section>
 
         <section class="board-stage" aria-label="오둑판 집중 정보 영역">
@@ -44,7 +44,11 @@
             <div id="augmentSummary" class="augment-summary"></div>
             <div id="boardActions" class="board-actions"></div>
         </section>
-        <aside id="gameInfo" class="game-info hidden" aria-label="게임 정보"></aside>
+        <aside id="gameInfo" class="game-info" aria-label="게임 정보">
+            <div id="playerInfoContainer"></div>
+            <div id="whiteAugmentInfo"></div>
+            <a id="leaveBtn" class="button-link" href="lobby.html">나가기</a>
+        </aside>
 
         <div id="decisionBackdrop" class="decision-backdrop hidden" aria-live="polite">
             <div id="boardBidPanel" class="board-decision-card hidden"></div>
@@ -210,9 +214,8 @@
             renderGameInfo(state);
             renderBoardActions(state);
             renderAugmentSummary(state);
-            document.getElementById('leaveBtn').classList.toggle('hidden', state.phase !== 'finished');
-            
-            document.querySelector('.game-layout').classList.toggle('board-focus-mode', Boolean(roomId) && state.phase !== 'finished');
+            // 나가기 버튼 표시 제어 (게임 중에는 항복 유도, 종료 시에는 나가기)
+            document.getElementById('leaveBtn').classList.toggle('hidden', Boolean(roomId) && state.phase !== 'finished');
 
             if (state.winner) {
                 document.getElementById('status').textContent = `${colorName(state.winner)} 승리!`;
@@ -386,27 +389,42 @@
             if (state.phase === 'playing' && !state.winner) {
                 buttons.push('<button type="button" class="surrender-button" data-board-surrender>항복</button>');
             }
-            if (state.phase === 'finished') {
-                buttons.push('<button type="button" onclick="window.location.href=\'lobby.html\'">로비로 나가기</button>');
-            }
             actions.innerHTML = buttons.join('');
         }
 
         function renderAugmentSummary(state) {
-            const summary = document.getElementById('augmentSummary');
-            summary.innerHTML = ['black', 'white'].map((color) => {
+            ['black', 'white'].forEach((color) => {
                 const player = state.players[color];
-                if (!player) return '';
-                return `
-                    <article class="augment-summary-card">
-                        <button type="button" data-modal="${color}-all"><strong>${colorName(color)} 증강</strong></button>
-                        <p><span>활성</span> ${untriggered(player.activeAugments, player).map(a => a.name).join(', ') || '없음'}</p>
-                        <p><span>대기</span> ${player.reserveAugments.map(a => a.name).join(', ') || '없음'}</p>
-                        <p><span>손패</span> ${player.handAugments.map(a => a.name).join(', ') || '없음'}</p>
-                        <p><span>발동됨</span> ${(player.triggeredAugments || []).map(a => a.name).join(', ') || '없음'}</p>
+                const containerId = color === 'black' ? 'blackAugmentInfo' : 'whiteAugmentInfo';
+                const container = document.getElementById(containerId);
+                if (!player) {
+                    container.innerHTML = '';
+                    return;
+                }
+
+                const renderAugmentList = (augments, color, isTriggered = false) => {
+                    return augments.map(a => {
+                        let turnInfo = '';
+                        if (a.effect === 'golden_snitch' && player.goldenSnitchRemainingTurns !== undefined) {
+                            turnInfo = ` <small>(${player.goldenSnitchRemainingTurns}턴 남음)</small>`;
+                        }
+                        const triggeredClass = isTriggered ? ' style="opacity: 0.6; text-decoration: line-through;"' : '';
+                        return `<span${triggeredClass}>${a.name}${turnInfo}</span>`;
+                    }).join(', ') || '없음';
+                };
+
+                container.innerHTML = `
+                    <article class="augment-summary-card" style="width: 100%;">
+                        <button type="button" data-modal="${color}-all" style="width: 100%; margin-bottom: 8px;"><strong>${colorName(color)} 증강 정보</strong></button>
+                        <div class="augment-status">
+                            <p><span>활성:</span> ${renderAugmentList(untriggered(player.activeAugments, player), color)}</p>
+                            <p><span>대기:</span> ${renderAugmentList(player.reserveAugments, color)}</p>
+                            <p><span>손패:</span> ${renderAugmentList(player.handAugments, color)}</p>
+                            <p><span>발동됨:</span> ${renderAugmentList(player.triggeredAugments || [], color, true)}</p>
+                        </div>
                     </article>
                 `;
-            }).join('');
+            });
         }
 
         function renderDecisionPanels(state) {
@@ -590,16 +608,26 @@
         }
 
         function renderGameInfo(state) {
-            const info = document.getElementById('gameInfo');
-            info.innerHTML = ['black', 'white'].map(c => {
+            const container = document.getElementById('playerInfoContainer');
+            if (!container) return;
+            container.innerHTML = ['black', 'white'].map(c => {
                 const p = state.players[c];
                 if (!p) return '';
                 return `<article class="player-info"><h2>${colorName(c)} - ${p.user.nickname}</h2><p>입찰: ${p.bid ?? '?'}</p></article>`;
             }).join('');
-            info.classList.toggle('hidden', !info.innerHTML);
         }
 
-        function renderLog(log) { document.getElementById('log').innerHTML = log.map(i => `<p>${i}</p>`).join(''); }
+        function renderLog(log) { 
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML = log.map(i => {
+                let style = '';
+                if (i.includes('흑의') || i.includes('흑 입찰')) style = 'color: #333; font-weight: bold;';
+                else if (i.includes('백의') || i.includes('백 입찰')) style = 'color: #666;';
+                else if (i.includes('발동')) style = 'color: #007aff; font-weight: bold; background: #eef6ff; padding: 2px 4px; border-radius: 4px;';
+                return `<p style="${style}">${i}</p>`;
+            }).join('');
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
         function colorName(c) { return c === 'black' ? '흑' : '백'; }
     </script>
 </body>

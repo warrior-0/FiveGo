@@ -830,7 +830,8 @@ function publicGameState(game) {
             reserveActivated: revealAugments ? seat.reserveActivated : false,
             reservePending: revealAugments ? seat.reservePending : false,
             handAugments: revealAugments ? seat.handAugments : [],
-            triggeredAugments: revealAugments ? seat.triggeredAugments : []
+            triggeredAugments: revealAugments ? seat.triggeredAugments : [],
+            goldenSnitchRemainingTurns: seat.goldenSnitchUntilTurn !== null ? Math.max(0, seat.goldenSnitchUntilTurn - game.turnCounts[color]) : undefined
         };
     };
 
@@ -858,7 +859,7 @@ function publicGameState(game) {
             mainMs: MAIN_TIME_MS,
             chipMs: TIME_CHIP_MS
         },
-        log: game.log.slice(-8)
+        log: game.log.slice(-20)
     };
 }
 
