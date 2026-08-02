@@ -158,3 +158,8 @@ button:hover {
 .cell.last-move::before { content: ''; position: absolute; inset: 11px; border: 2px solid #ff3b30; border-radius: 50%; z-index: 2; pointer-events: none; }
 .cell.last-move.white::before { border-color: #007aff; }
 .cell.last-move:not(.black):not(.white)::before { inset: 8px; border-style: dashed; }
+.augment-choice { border-color: #d8d8d8; transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease; }
+.augment-choice:has(input:checked) { border-color: #007aff; background: #eef6ff; box-shadow: 0 0 0 3px rgba(0,122,255,0.22); }
+.augment-choice:has(input:checked)::after { content: '선택 중'; justify-self: start; padding: 3px 8px; border-radius: 999px; background: #007aff; color: #fff; font-size: 12px; font-weight: bold; }
+.augment-choice.view-only { cursor: default; }
+button:disabled { cursor: not-allowed; }
