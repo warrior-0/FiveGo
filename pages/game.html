@@ -39,13 +39,16 @@
 
         <section class="board-stage" aria-label="오둑판 집중 정보 영역">
             <div id="phaseOverlay" class="phase-overlay"></div>
-            <div id="boardSelectionPanel" class="board-selection-panel hidden"></div>
             <div id="playerHud" class="board-hud"></div>
             <section id="board" class="board" aria-label="11x11 오둑판"></section>
             <div id="boardActions" class="board-actions"></div>
         </section>
         <aside id="gameInfo" class="game-info hidden" aria-label="게임 정보"></aside>
 
+        <div id="decisionBackdrop" class="decision-backdrop hidden" aria-live="polite">
+            <div id="boardBidPanel" class="board-decision-card hidden"></div>
+            <div id="boardSelectionPanel" class="board-decision-card hidden"></div>
+        </div>
         <div id="augmentModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="augmentModalTitle">
             <article class="modal-card">
                 <button id="augmentModalClose" class="modal-close" type="button" aria-label="닫기">×</button>
@@ -66,6 +69,7 @@
         let mySocketId = null;
         let myColor = null;
         let pendingBidValue = document.getElementById('bidInput').value;
+        let boardSelectedAugmentIds = [];
 
         for (let y = 0; y < 11; y += 1) {
             for (let x = 0; x < 11; x += 1) {
@@ -198,8 +202,9 @@
             renderBoard(state.board, state.lastMove);
             renderPanels(state);
             renderBoardFocusInfo(state);
-            renderBoardSelectionPanel(state);
+            renderDecisionPanels(state);
             renderGameInfo(state);
+            document.querySelector('.game-layout').classList.toggle('board-focus-mode', Boolean(roomId && state.phase !== 'finished'));
             renderLog(state.log);
 
             if (state.winner) {
@@ -335,28 +340,75 @@
         }
 
 
-        document.getElementById('boardSelectionPanel').addEventListener('change', (event) => {
-            if (event.target.type !== 'checkbox') return;
+        document.getElementById('boardBidPanel').addEventListener('click', (event) => {
+            const bidButton = event.target.closest('[data-bid-value]');
+            if (bidButton) {
+                pendingBidValue = bidButton.dataset.bidValue;
+                renderDecisionPanels(currentState);
+                return;
+            }
 
-            const required = Number(event.target.dataset.required || 0);
-            const checked = document.querySelectorAll('#boardSelectionPanel input:checked');
-
-            if (required && checked.length > required) {
-                event.target.checked = false;
-                alert(`증강은 ${required}개만 선택할 수 있습니다.`);
+            if (event.target.closest('[data-board-bid-confirm]')) {
+                socket.emit('submitBid', { roomId, bid: Number(pendingBidValue) });
             }
         });
 
         document.getElementById('boardSelectionPanel').addEventListener('click', (event) => {
+            const choiceButton = event.target.closest('[data-augment-id]');
+            if (choiceButton && currentState?.phase === 'augment-selection') {
+                const step = currentState.selection?.steps?.[currentState.selection.index];
+                if (step?.color !== myColor) return;
+
+                const id = Number(choiceButton.dataset.augmentId);
+                const required = Number(choiceButton.dataset.required || 0);
+                const exists = boardSelectedAugmentIds.includes(id);
+                boardSelectedAugmentIds = exists
+                    ? boardSelectedAugmentIds.filter((candidate) => candidate !== id)
+                    : [...boardSelectedAugmentIds, id].slice(-required);
+                renderDecisionPanels(currentState);
+                return;
+            }
+          
             const confirmButton = event.target.closest('[data-board-confirm]');
             if (!confirmButton || currentState?.phase !== 'augment-selection') return;
 
             const stepColor = currentState.selection?.steps?.[currentState.selection.index]?.color;
             if (stepColor !== myColor) return;
 
-            const augmentIds = [...document.querySelectorAll('#boardSelectionPanel input:checked')].map((input) => Number(input.value));
-            socket.emit('selectAugments', { roomId, augmentIds });
+            socket.emit('selectAugments', { roomId, augmentIds: boardSelectedAugmentIds });
         });
+
+        function renderDecisionPanels(state) {
+            renderBoardBidPanel(state);
+            renderBoardSelectionPanel(state);
+            document.getElementById('decisionBackdrop').classList.toggle('hidden', state.phase !== 'bidding' && state.phase !== 'augment-selection');
+        }
+
+        function renderBoardBidPanel(state) {
+            const panel = document.getElementById('boardBidPanel');
+            panel.classList.toggle('hidden', state.phase !== 'bidding');
+            if (state.phase !== 'bidding') {
+                panel.innerHTML = '';
+                return;
+            }
+
+            const seat = mySeat(state);
+            panel.innerHTML = `
+                <div class="board-selection-header">
+                    <strong>흑 입찰</strong>
+                    <span>${seat?.bid === null ? '점수를 양보해 흑을 입찰하세요' : '입찰 제출 완료'}</span>
+                </div>
+                <div class="bid-choice-grid">
+                    ${[0, 1, 2, 3].map((value) => `
+                        <button type="button" class="bid-choice${Number(pendingBidValue) === value ? ' selected' : ''}" data-bid-value="${value}" ${seat?.bid !== null ? 'disabled' : ''}>
+                            <strong>${value}점</strong>
+                            <span>양보</span>
+                        </button>
+                    `).join('')}
+                </div>
+                <button type="button" data-board-bid-confirm ${seat?.bid !== null ? 'disabled' : ''}>입찰 확정</button>
+            `;
+        }
 
         function renderBoardSelectionPanel(state) {
             const panel = document.getElementById('boardSelectionPanel');
@@ -365,6 +417,7 @@
 
             if (state.phase !== 'augment-selection' || !step) {
                 panel.innerHTML = '';
+                boardSelectedAugmentIds = [];
                 return;
             }
 
@@ -373,8 +426,10 @@
             const selected = new Set(player.selectedAugmentIds || []);
             const source = step.source === 'reserve' ? player.reserveAugments : player.choices;
             const availableChoices = source.filter((augment) => !selected.has(augment.id));
+            const availableIds = new Set(availableChoices.map((augment) => augment.id));
             const required = Math.min(availableChoices.length, step.count);
             const isMySelection = chooserColor === myColor;
+            boardSelectedAugmentIds = boardSelectedAugmentIds.filter((id) => availableIds.has(id)).slice(0, required);
 
             panel.innerHTML = `
                 <div class="board-selection-header">
@@ -383,14 +438,13 @@
                 </div>
                 <div class="board-selection-list">
                     ${availableChoices.map((augment) => `
-                        <label class="augment-card compact augment-choice${isMySelection ? '' : ' view-only'}">
-                            ${isMySelection ? `<input type="checkbox" value="${augment.id}" data-required="${required}">` : ''}
+                        <button type="button" class="augment-card compact augment-choice${boardSelectedAugmentIds.includes(augment.id) ? ' selected' : ''}${isMySelection ? '' : ' view-only'}" data-augment-id="${augment.id}" data-required="${required}" ${isMySelection ? '' : 'disabled'}>
                             <strong>${augment.name}</strong>
                             <span>${augment.description}</span>
-                        </label>
+                        </button>
                     `).join('')}
                 </div>
-                ${isMySelection ? '<button type="button" data-board-confirm>보드에서 증강 확정</button>' : ''}
+                ${isMySelection ? '<button type="button" data-board-confirm>증강 확정</button>' : ''}
             `;
         }
 
@@ -468,6 +522,7 @@
             }
 
             buttons.push(`<button type="button" data-modal="queue">증강 큐 ${state.augmentQueue?.length || 0}</button>`);
+            buttons.push('<button type="button" data-board-leave>나가기</button>');
             actions.innerHTML = buttons.join('');
         }
 
@@ -478,6 +533,11 @@
         });
 
         document.getElementById('boardActions').addEventListener('click', (event) => {
+            if (event.target.closest('[data-board-leave]')) {
+                emitAndGoLobby(roomId && currentState?.phase !== 'finished' ? 'leaveRoom' : 'cancelMatch');
+                return;
+            }
+          
             const button = event.target.closest('[data-modal]');
             if (!button || !currentState) return;
             openAugmentModal(button.dataset.modal);
