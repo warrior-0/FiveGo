@@ -34,7 +34,7 @@
             </div>
 
             <div id="log" class="log"></div>
-            <a id="leaveBtn" class="button-link" href="lobby.html">나가기</a>
+            <a id="leaveBtn" class="button-link hidden" href="lobby.html">나가기</a>
         </section>
 
         <section class="board-stage" aria-label="오둑판 집중 정보 영역">
@@ -210,8 +210,9 @@
             renderGameInfo(state);
             renderBoardActions(state);
             renderAugmentSummary(state);
+            document.getElementById('leaveBtn').classList.toggle('hidden', state.phase !== 'finished');
             
-            document.querySelector('.game-layout').classList.toggle('board-focus-mode', Boolean(roomId));
+            document.querySelector('.game-layout').classList.toggle('board-focus-mode', Boolean(roomId) && state.phase !== 'finished');
 
             if (state.winner) {
                 document.getElementById('status').textContent = `${colorName(state.winner)} 승리!`;
@@ -385,6 +386,9 @@
             if (state.phase === 'playing' && !state.winner) {
                 buttons.push('<button type="button" class="surrender-button" data-board-surrender>항복</button>');
             }
+            if (state.phase === 'finished') {
+                buttons.push('<button type="button" onclick="window.location.href=\'lobby.html\'">로비로 나가기</button>');
+            }
             actions.innerHTML = buttons.join('');
         }
 
@@ -396,9 +400,10 @@
                 return `
                     <article class="augment-summary-card">
                         <button type="button" data-modal="${color}-all"><strong>${colorName(color)} 증강</strong></button>
-                        <p><span>활성</span> ${player.activeAugments.map(a => a.name).join(', ') || '없음'}</p>
+                        <p><span>활성</span> ${untriggered(player.activeAugments, player).map(a => a.name).join(', ') || '없음'}</p>
                         <p><span>대기</span> ${player.reserveAugments.map(a => a.name).join(', ') || '없음'}</p>
                         <p><span>손패</span> ${player.handAugments.map(a => a.name).join(', ') || '없음'}</p>
+                        <p><span>발동됨</span> ${(player.triggeredAugments || []).map(a => a.name).join(', ') || '없음'}</p>
                     </article>
                 `;
             }).join('');
@@ -506,10 +511,15 @@
             handleModalClick(event);
         });
         document.getElementById('augmentSummary').addEventListener('click', handleModalClick);
+        document.getElementById('augmentModalBody').addEventListener('click', handleModalClick);
         
         function handleModalClick(event) {
             const button = event.target.closest('[data-modal]');
             if (button && currentState) openAugmentModal(button.dataset.modal);
+            const activateButton = event.target.closest('[data-activate-augment]');
+            if (activateButton && currentState?.phase === 'playing') {
+                socket.emit('activateAugment', { roomId, augmentId: Number(activateButton.dataset.activateAugment) });
+            }
         }
 
         document.getElementById('surrenderCancelBtn').addEventListener('click', () => {
@@ -542,7 +552,7 @@
 
         function renderPlayerAugmentDetails(player, section) {
             if (!player) return '<p>정보 없음</p>';
-            const sections = section === 'all' ? ['active', 'reserve', 'hand'] : [section];
+            const sections = section === 'all' ? ['active', 'reserve', 'hand', 'triggered'] : [section];
             return sections.map(s => `
                 <section class="modal-section">
                     <h3>${sectionTitle(s)}</h3>
@@ -552,10 +562,10 @@
         }
 
         function sectionTitle(s) {
-            return { active: '활성화 증강', reserve: '대기 증강', hand: '손패 증강' }[s] || '증강';
+            return { active: '활성화 증강', reserve: '대기 증강', hand: '손패 증강', triggered: '발동됨' }[s] || '증강';
         }
         function sectionAugments(p, s) {
-            return { active: p.activeAugments, reserve: p.reserveAugments, hand: p.handAugments }[s] || [];
+            return { active: untriggered(p.activeAugments, p), reserve: p.reserveAugments, hand: p.handAugments, triggered: p.triggeredAugments || [] }[s] || [];
         }
 
         function renderAugmentCards(augments, triggeredIds = []) {
@@ -564,8 +574,14 @@
                 <article class="modal-augment-card">
                     <strong>${a.name}${triggeredIds.includes(a.id) ? ' (발동됨)' : ''}</strong>
                     <p>${a.description}</p>
+                    ${currentState?.phase === 'playing' && (currentState.players[myColor]?.handAugments || []).some(h => h.id === a.id) ? `<button type="button" data-activate-augment="${a.id}">발동</button>` : ''}
                 </article>
             `).join('');
+        }
+
+        function untriggered(augments = [], player = {}) {
+            const triggered = new Set(player.triggeredAugmentIds || []);
+            return augments.filter((augment) => !triggered.has(augment.id));
         }
 
         function renderQueueDetails(queue) {
