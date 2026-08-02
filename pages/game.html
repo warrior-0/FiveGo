@@ -469,9 +469,8 @@
                             <button type="button" data-modal="${color}-all" class="augment-detail-btn">${colorName(color)} 증강 상세확인</button>
                         </div>
                         <div class="augment-status">
-                            <p><span>활성:</span> ${renderAugmentList(untriggered(player.activeAugments, player), color)}</p>
-                            <p><span>대기:</span> ${renderAugmentList(player.reserveAugments, color)}</p>
-                            <p><span>손패:</span> ${renderAugmentList(player.handAugments, color)}</p>
+                            <p><span>활성(손패):</span> ${renderAugmentList(player.handAugments, color)}</p>
+                            <p><span>대기(예비):</span> ${renderAugmentList(player.reserveAugments, color)}</p>
                             <p><span>발동됨:</span> ${renderAugmentList(player.triggeredAugments || [], color, true)}</p>
                         </div>
                     </article>
@@ -632,7 +631,7 @@
 
         function renderPlayerAugmentDetails(player, section) {
             if (!player) return '<p>정보 없음</p>';
-            const sections = section === 'all' ? ['active', 'reserve', 'hand', 'triggered'] : [section];
+            const sections = section === 'all' ? ['hand', 'reserve', 'triggered'] : [section];
             return sections.map(s => `
                 <section class="modal-section">
                     <h3>${sectionTitle(s)}</h3>
@@ -642,10 +641,10 @@
         }
 
         function sectionTitle(s) {
-            return { active: '활성화 증강', reserve: '대기 증강', hand: '손패 증강', triggered: '발동됨' }[s] || '증강';
+            return { hand: '활성(손패) 증강', reserve: '대기(예비) 증강', triggered: '발동됨' }[s] || '증강';
         }
         function sectionAugments(p, s) {
-            return { active: untriggered(p.activeAugments, p), reserve: p.reserveAugments, hand: p.handAugments, triggered: p.triggeredAugments || [] }[s] || [];
+            return { hand: p.handAugments, reserve: p.reserveAugments, triggered: p.triggeredAugments || [] }[s] || [];
         }
 
         function renderAugmentCards(augments, triggeredIds = []) {

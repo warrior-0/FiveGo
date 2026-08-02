@@ -284,14 +284,13 @@ button:disabled { cursor: not-allowed; }
 .queue-name { flex-grow: 1; font-weight: 500; }
 
 .queue-owner-tag {
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
     font-weight: bold;
-    text-transform: uppercase;
 }
-.queue-owner-tag.black { background: #333; color: white; }
-.queue-owner-tag.white { background: #eee; color: #333; border: 1px solid #ccc; }
+.queue-owner-tag.black { background: #000; color: #fff; border: 1px solid #444; }
+.queue-owner-tag.white { background: #fff; color: #000; border: 1px solid #999; }
 
 .modal-augment-card.black { border-left: 5px solid #333; }
 .modal-augment-card.white { border-left: 5px solid #ddd; }
