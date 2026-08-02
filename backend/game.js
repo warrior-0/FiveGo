@@ -1,6 +1,7 @@
 const BOARD_SIZE = 11;
 const WIN_SCORE = 5;
 const CHOICE_COUNT = 3;
+const DECISION_TIME_MS = 30 * 1000;
 const MAX_BID = 3;
 const MAIN_TIME_MS = 5 * 60 * 1000;
 const TIME_CHIP_MS = 20 * 1000;
@@ -70,7 +71,7 @@ function publicAugment(augment) {
         name: normalized.name,
         description: normalized.description,
         timing: normalized.timing,
-        activationType: normalized.timing === 'start' ? 'immediate' : 'automatic'
+        activationType: normalized.timing === 'manual' ? 'manual' : 'automatic'
     };
 }
 
@@ -103,7 +104,9 @@ function createPlayerState({ socketId, user, deck }) {
         triggeredAugmentIds: [],
         reserveActivated: false,
         bid: null,
-        ready: false
+        ready: false,
+        handAugments: [],
+        reservePending: false
     };
 }
 
@@ -131,6 +134,9 @@ function createGame(playerA, playerB) {
         winner: null,
         clock: createClock(),
         lastMove: null,
+        augmentQueue: [],
+        selection: null,
+        decisionDeadlineAt: Date.now() + DECISION_TIME_MS,
         log: ['입찰을 진행하세요. 더 많이 점수를 양보한 사람이 흑을 잡습니다.']
     };
 }
@@ -198,14 +204,69 @@ function resolveBids(game) {
     game.scores.white = game.players.black.bid;
     game.scores.black = 0;
     game.phase = 'augment-selection';
+    startInitialAugmentSelection(game);
 
     game.log.push(`흑: ${game.players.black.user.nickname}, 백: ${game.players.white.user.nickname}`);
     game.log.push(`백은 ${game.scores.white}점으로 시작합니다.`);
 }
 
+function resetDecisionTimer(game) {
+    game.decisionDeadlineAt = Date.now() + DECISION_TIME_MS;
+}
+
+function isManualAugment(augment) {
+    return augment.timing === 'manual' || augment.activationType === 'manual';
+}
+
+function enqueueOrHandAugment(game, color, augment) {
+    const player = game.players[color];
+
+    if (isManualAugment(augment)) {
+        player.handAugments.push(augment);
+        game.log.push(`${player.user.nickname}의 ${augment.name}이(가) 손패에 추가되었습니다.`);
+        return;
+    }
+
+    game.augmentQueue.push({ color, augment });
+}
+
+function currentSelectionStep(game) {
+    if (!game.selection) return null;
+    return game.selection.steps[game.selection.index] || null;
+}
+
+function startInitialAugmentSelection(game) {
+    game.selection = {
+        type: 'initial',
+        index: 0,
+        steps: [
+            { color: 'white', mode: 'choose', count: 1, source: 'choices' },
+            { color: 'black', mode: 'choose', count: 1, source: 'choices' },
+            { color: 'white', mode: 'choose', count: 1, source: 'choices' }
+        ]
+    };
+    resetDecisionTimer(game);
+}
+
+function selectedChoiceIds(player) {
+    return new Set(player.selectedAugmentIds);
+}
+
+function availableAugmentChoices(player, source) {
+    const selected = selectedChoiceIds(player);
+    const base = source === 'reserve' ? player.reserveAugments : player.choices;
+    return base.filter((augment) => !selected.has(augment.id));
+}
+
 function selectAugments(game, socketId, selectedAugmentIds) {
     if (game.phase !== 'augment-selection') {
         throw new Error('증강 선택 단계가 아닙니다.');
+    }
+
+    const step = currentSelectionStep(game);
+
+    if (!step) {
+        throw new Error('현재 선택할 증강이 없습니다.');
     }
 
     const color = getColorBySocket(game, socketId);
@@ -214,11 +275,19 @@ function selectAugments(game, socketId, selectedAugmentIds) {
         throw new Error('참가자가 아닙니다.');
     }
 
+    if (color !== step.color) {
+        throw new Error(`${step.color === 'black' ? '흑' : '백'}의 증강 선택 차례입니다.`);
+    }
+
+    applyAugmentSelection(game, color, selectedAugmentIds || []);
+}
+
+function applyAugmentSelection(game, color, selectedAugmentIds) {
+    const step = currentSelectionStep(game);
     const player = game.players[color];
     const selected = selectedAugmentIds.map(Number);
-    const availableChoices = player.choices;
-    const baseRequired = color === 'black' ? 1 : 2;
-    const required = Math.min(availableChoices.length, baseRequired);
+    const availableChoices = availableAugmentChoices(player, step.source);
+    const required = Math.min(availableChoices.length, step.count);
     const choiceIds = new Set(availableChoices.map((augment) => augment.id));
 
     if (selected.length !== required) {
@@ -229,58 +298,195 @@ function selectAugments(game, socketId, selectedAugmentIds) {
         throw new Error('선택할 수 없는 증강입니다.');
     }
 
-    player.selectedAugmentIds = selected;
-    player.ready = true;
-    game.log.push(`${color === 'black' ? '흑' : '백'} 증강 선택 완료`);
+    for (const id of selected) {
+        const augment = availableChoices.find((candidate) => candidate.id === id);
+        player.selectedAugmentIds.push(id);
+        player.activeAugments.push(augment);
+        enqueueOrHandAugment(game, color, augment);
+        game.log.push(`${color === 'black' ? '흑' : '백'} ${augment.name} 선택 완료`);
+    }
 
-    if (game.players.black.ready && game.players.white.ready) {
+    if (step.source === 'reserve') {
+        const chosen = new Set(selected);
+        const remaining = availableChoices.filter((augment) => !chosen.has(augment.id));
+
+        for (const augment of remaining) {
+            player.selectedAugmentIds.push(augment.id);
+            player.activeAugments.push(augment);
+            enqueueOrHandAugment(game, color, augment);
+        }
+
+        player.reserveAugments = [];
+        player.captureAugments = [];
+        player.reserveActivated = true;
+        player.reservePending = false;
+    }
+
+    advanceAugmentSelection(game);
+}
+
+function advanceAugmentSelection(game) {
+    game.selection.index += 1;
+
+    if (currentSelectionStep(game)) {
+        resetDecisionTimer(game);
+        return;
+    }
+
+    if (game.selection.type === 'initial') {
         prepareAugments(game, 'black');
         prepareAugments(game, 'white');
-        applyStartAugments(game, 'black');
-        applyStartAugments(game, 'white');
         game.phase = 'playing';
-        startTurnClock(game);
-        game.log.push('게임을 시작합니다. 기본 시간 5분 후 20초 초읽기가 시작됩니다.');
+        game.selection = null;
+        game.decisionDeadlineAt = null;
+        processAugmentQueue(game, { type: 'start' });
         checkWinner(game);
 
         if (!game.winner) {
+            startTurnClock(game);
+            game.log.push('게임을 시작합니다. 기본 시간 5분 후 20초 초읽기가 시작됩니다.');
             resolveTurnAvailability(game);
         }
+        return;
     }
+
+    game.phase = 'playing';
+    game.selection = null;
+    game.decisionDeadlineAt = null;
+    processAugmentQueue(game, { type: 'capture', capturedColor: game.turn, capturedCount: 0, capturingColor: opponent(game.turn), scoreDeltaRef: null });
 }
 
 function prepareAugments(game, color) {
     const player = game.players[color];
     const selected = new Set(player.selectedAugmentIds);
 
-    player.activeAugments = player.choices.filter((augment) => selected.has(augment.id));
     player.reserveAugments = player.choices.filter((augment) => !selected.has(augment.id));
     player.startAugments = player.activeAugments;
     player.captureAugments = player.reserveAugments;
+    player.ready = true;
+}
+function canFireAugment(augment, event) {
+    if (event.type === 'start') {
+        return augment.timing === 'start' || augment.effect === 'start_gain_one';
+    }
+
+    if (event.type === 'capture') {
+        return augment.timing === 'capture-first' && event.capturedCount > 0;
+    }
+
+    return false;
 }
 
-function applyStartAugments(game, color) {
+function fireAugment(game, entry, event) {
+    const { color, augment } = entry;
     const player = game.players[color];
-    activateImmediateAugments(game, color, player.activeAugments);
+
+    if (player.triggeredAugmentIds.includes(augment.id)) return false;
+
+    if (event.type === 'start' && augment.effect === 'start_gain_one') {
+        game.scores[color] += 1;
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 1점 획득`);
+        player.triggeredAugmentIds.push(augment.id);
+        return true;
+    }
+
+    if (event.type !== 'capture' || color !== event.capturedColor) return false;
+
+    const capturedColor = event.capturedColor;
+    const capturingColor = event.capturingColor;
+    const currentCapturerScore = event.currentCapturerScore;
+    const currentCapturedScore = event.currentCapturedScore;
+    const originalCapturedCount = event.capturedCount;
+    const scoreDeltaRef = event.scoreDeltaRef;
+
+    if (augment.effect === 'capture_score_reduce') {
+        scoreDeltaRef.value = Math.max(0, scoreDeltaRef.value - 1);
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 상대 획득 예정 점수 -1`);
+    } else if (augment.effect === 'gain_one_on_captured') {
+        game.scores[capturedColor] += 1;
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 반격 1점 획득`);
+    } else if (augment.effect === 'reduce_multi_capture_score') {
+        if (originalCapturedCount < 2) return false;
+        scoreDeltaRef.value = Math.max(0, scoreDeltaRef.value - 1);
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 다중 포획 점수 -1`);
+    } else if (augment.effect === 'cap_capture_score_two') {
+        scoreDeltaRef.value = Math.min(scoreDeltaRef.value, 2);
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 포획 점수 최대 2점`);
+    } else if (augment.effect === 'gain_one_if_low_score') {
+        if (currentCapturedScore > 2) return false;
+        game.scores[capturedColor] += 1;
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 버티기 1점 획득`);
+    } else if (augment.effect === 'reduce_leading_capturer_score') {
+        if (currentCapturerScore + originalCapturedCount <= currentCapturedScore) return false;
+        scoreDeltaRef.value = Math.max(0, scoreDeltaRef.value - 1);
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 앞선 상대의 획득 예정 점수 -1`);
+    } else if (augment.effect === 'gain_one_if_behind_on_activate') {
+        if (currentCapturerScore + originalCapturedCount <= currentCapturedScore) return false;
+        game.scores[capturedColor] += 1;
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
+    } else {
+        return false;
+    }
+
+    player.triggeredAugmentIds.push(augment.id);
+    return true;
 }
 
-function activateImmediateAugments(game, color, augments) {
-    const player = game.players[color];
+function processAugmentQueue(game, event) {
+    let restarted = true;
+    let guard = 0;
+    const maxIterations = Math.max(1, game.augmentQueue.length * game.augmentQueue.length + 10);
 
-    for (const augment of augments) {
-        if (player.triggeredAugmentIds.includes(augment.id)) continue;
+    while (restarted && guard < maxIterations) {
+        restarted = false;
+        guard += 1;
 
-        if (augment.effect === 'start_gain_one') {
-            game.scores[color] += 1;
-            game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 1점 획득`);
+        for (let index = 0; index < game.augmentQueue.length; index += 1) {
+            const entry = game.augmentQueue[index];
+
+            if (!canFireAugment(entry.augment, event)) continue;
+            if (!fireAugment(game, entry, event)) continue;
+
+            game.augmentQueue.splice(index, 1);
+            restarted = true;
+            break;
         }
+    }
 
-        if (augment.timing === 'start') {
-            player.triggeredAugmentIds.push(augment.id);
-        }
+    if (guard >= maxIterations) {
+        game.log.push('증강 큐 처리가 안전 한도에 도달해 중단되었습니다.');
     }
 }
 
+function startReserveSelectionIfNeeded(game, capturedColor) {
+    const player = game.players[capturedColor];
+
+    if (player.reserveActivated || player.reservePending || player.reserveAugments.length === 0) return false;
+
+    if (capturedColor === 'white') {
+        for (const augment of player.reserveAugments) {
+            player.selectedAugmentIds.push(augment.id);
+            player.activeAugments.push(augment);
+            enqueueOrHandAugment(game, capturedColor, augment);
+        }
+        player.reserveAugments = [];
+        player.captureAugments = [];
+        player.reserveActivated = true;
+        game.log.push(`${player.user.nickname}의 남은 대기 증강이 활성화되었습니다.`);
+        return false;
+    }
+
+    player.reservePending = true;
+    game.phase = 'augment-selection';
+    game.selection = {
+        type: 'reserve',
+        index: 0,
+        steps: [{ color: capturedColor, mode: 'choose', count: 1, source: 'reserve' }]
+    };
+    resetDecisionTimer(game);
+    game.log.push(`${player.user.nickname}의 대기 증강 선택이 필요합니다.`);
+    return true;
+}
 function neighbors(x, y) {
     return [
         [x + 1, y],
@@ -397,90 +603,24 @@ function resolveTurnAvailability(game) {
 }
 
 function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount) {
-    if (capturedCount <= 0) return { scoreDelta: capturedCount, skipTurn: false };
+    if (capturedCount <= 0) return { scoreDelta: capturedCount, skipTurn: false, selectionPending: false };
 
-    const capturedPlayer = game.players[capturedColor];
-    let scoreDelta = capturedCount;
-    let skipTurn = false;
+    let scoreDeltaRef = { value: capturedCount };
+    const event = {
+        type: 'capture',
+        capturedColor,
+        capturingColor,
+        capturedCount,
+        currentCapturerScore: game.scores[capturingColor],
+        currentCapturedScore: game.scores[capturedColor],
+        scoreDeltaRef
+    };
 
-    // 현재 이미 활성화된 증강들만 이번 턴에 처리 대상으로 설정
-    const augmentsToProcess = [...capturedPlayer.activeAugments];
+    processAugmentQueue(game, event);
 
-    // 대기 증강 활성화 여부 확인: 아직 활성화 안 됐고 대기 중인 증강이 있다면 활성화 시도
-    const willActivateReserve = !capturedPlayer.reserveActivated && capturedPlayer.reserveAugments.length > 0;
+    const selectionPending = startReserveSelectionIfNeeded(game, capturedColor);
 
-    if (willActivateReserve) {
-        const names = capturedPlayer.reserveAugments.map((a) => a.name).join(', ');
-        game.log.push(`${capturedPlayer.user.nickname}의 대기 증강(${names})이 활성화되었습니다!`);
-    }
-
-    // 1. Capture-first 타이밍의 증강 효과들을 처리
-    // 판정 기준을 고정하기 위해 현재 점수와 원래 포획 수를 상수로 유지
-    const currentCapturerScore = game.scores[capturingColor];
-    const currentCapturedScore = game.scores[capturedColor];
-    const originalCapturedCount = capturedCount;
-
-    for (const augment of augmentsToProcess) {
-        if (capturedPlayer.triggeredAugmentIds.includes(augment.id)) continue;
-        if (augment.timing !== 'capture-first') continue;
-
-        // 효과 발동 조건 확인 및 처리
-        if (augment.effect === 'capture_score_reduce') {
-            scoreDelta = Math.max(0, scoreDelta - 1);
-            game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 상대 획득 예정 점수 -1`);
-            capturedPlayer.triggeredAugmentIds.push(augment.id);
-        } else if (augment.effect === 'gain_one_on_captured') {
-            game.scores[capturedColor] += 1;
-            game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 반격 1점 획득`);
-            capturedPlayer.triggeredAugmentIds.push(augment.id);
-        } else if (augment.effect === 'reduce_multi_capture_score') {
-            if (originalCapturedCount >= 2) {
-                scoreDelta = Math.max(0, scoreDelta - 1);
-                game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 다중 포획 점수 -1`);
-                capturedPlayer.triggeredAugmentIds.push(augment.id);
-            }
-        } else if (augment.effect === 'cap_capture_score_two') {
-            scoreDelta = Math.min(scoreDelta, 2);
-            game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 포획 점수 최대 2점`);
-            capturedPlayer.triggeredAugmentIds.push(augment.id);
-        } else if (augment.effect === 'gain_one_if_low_score') {
-            if (currentCapturedScore <= 2) {
-                game.scores[capturedColor] += 1;
-                game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 버티기 1점 획득`);
-                capturedPlayer.triggeredAugmentIds.push(augment.id);
-            }
-        } else if (augment.effect === 'reduce_leading_capturer_score') {
-            // 판정 기준: 포획 전 점수 + 원래 포획 수가 내 점수보다 높은지 확인
-            if (currentCapturerScore + originalCapturedCount > currentCapturedScore) {
-                // 상대의 기존 점수가 아닌, 이번에 얻을 점수(scoreDelta)에서 차감
-                scoreDelta = Math.max(0, scoreDelta - 1);
-                game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 앞선 상대의 획득 예정 점수 -1`);
-                capturedPlayer.triggeredAugmentIds.push(augment.id);
-            }
-        } else if (augment.effect === 'gain_one_if_behind_on_activate') {
-            // 판정 기준: 포획 전 점수 + 원래 포획 수가 내 점수보다 높은지 확인 (다른 증강의 결과에 영향을 받지 않음)
-            if (currentCapturerScore + originalCapturedCount > currentCapturedScore) {
-                game.scores[capturedColor] += 1;
-                game.log.push(`${capturedPlayer.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
-                capturedPlayer.triggeredAugmentIds.push(augment.id);
-            }
-        }
-    }
-
-    // 2. 대기 증강 활성화 처리
-    if (willActivateReserve) {
-        const reserveAugments = [...capturedPlayer.reserveAugments];
-        capturedPlayer.reserveActivated = true;
-        capturedPlayer.activeAugments.push(...reserveAugments);
-        
-        // 대기 증강 중 'start' 타이밍(즉시 효과) 처리
-        activateImmediateAugments(game, capturedColor, reserveAugments);
-        
-        capturedPlayer.reserveAugments = [];
-        capturedPlayer.captureAugments = [];
-    }
-
-    return { scoreDelta, skipTurn };
+    return { scoreDelta: scoreDeltaRef.value, skipTurn: false, selectionPending };
 }
 
 
@@ -627,13 +767,18 @@ function placeStone(game, color, x, y) {
     const result = applyCaptureAugments(game, enemy, color, captured);
     game.scores[color] += result.scoreDelta;
 
+    if (result.selectionPending) {
+        game.turn = enemy;
+        game.clock.turnStartedAt = null;
+    }
+
     if (captured > 0) {
         game.log.push(`${color === 'black' ? '흑' : '백'}이 ${captured}개를 포획했습니다.`);
     }
 
     checkWinner(game);
 
-    if (!game.winner) {
+    if (!game.winner && !result.selectionPending) {
         game.turn = result.skipTurn ? color : enemy;
         resolveTurnAvailability(game);
     }
@@ -643,7 +788,7 @@ function placeStone(game, color, x, y) {
 
 function publicGameState(game) {
     const revealBids = game.phase !== 'bidding';
-    const revealAugments = game.phase === 'playing' || game.phase === 'finished';
+    const revealAugments = game.phase !== 'bidding';
     const publicSeat = (seat) => {
         if (!seat) return null;
 
@@ -656,7 +801,9 @@ function publicGameState(game) {
             triggeredAugmentIds: revealAugments ? seat.triggeredAugmentIds : [],
             activeAugments: revealAugments ? seat.activeAugments : [],
             reserveAugments: revealAugments ? seat.reserveAugments : [],
-            reserveActivated: revealAugments ? seat.reserveActivated : false
+            reserveActivated: revealAugments ? seat.reserveActivated : false,
+            reservePending: revealAugments ? seat.reservePending : false,
+            handAugments: revealAugments ? seat.handAugments : []
         };
     };
 
@@ -676,6 +823,9 @@ function publicGameState(game) {
         winner: game.winner,
         clock: publicClockState(game),
         lastMove: game.lastMove,
+        augmentQueue: revealAugments ? game.augmentQueue : [],
+        selection: game.selection,
+        decisionDeadlineAt: game.decisionDeadlineAt,
         timeRule: {
             mainMs: MAIN_TIME_MS,
             chipMs: TIME_CHIP_MS
@@ -699,6 +849,11 @@ module.exports = {
     placeStone,
     publicGameState,
     resolveTurnAvailability,
+    DECISION_TIME_MS,
+    currentSelectionStep,
+    availableAugmentChoices,
+    applyAugmentSelection,
+    resetDecisionTimer,
     selectAugments,
     submitBid
 };

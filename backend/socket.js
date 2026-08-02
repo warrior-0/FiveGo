@@ -1,10 +1,13 @@
 const db = require('./db');
 const {
     applyTurnClock,
+    applyAugmentSelection,
+    availableAugmentChoices,
     createGame,
     getColorBySocket,
     placeStone,
     publicGameState,
+    currentSelectionStep,
     selectAugments,
     submitBid
 } = require('./game');
@@ -13,6 +16,7 @@ const waiting = [];
 const games = new Map();
 const socketRooms = new Map();
 const clockIntervals = new Map();
+const decisionTimers = new Map();
 
 async function loadUser(socket) {
     const userId = socket.request.session?.userId;
@@ -85,6 +89,81 @@ async function saveResultIfNeeded(game) {
     await db.query('UPDATE users SET wins = wins + 1, rank_score = rank_score + 15 WHERE id = ?', [winnerId]);
     await db.query('UPDATE users SET losses = losses + 1, rank_score = GREATEST(rank_score - 15, 0) WHERE id = ?', [loserId]);
     game.resultSaved = true;
+}
+
+
+function clearDecisionTimer(roomId) {
+    const timerId = decisionTimers.get(roomId);
+    if (!timerId) return;
+    clearTimeout(timerId);
+    decisionTimers.delete(roomId);
+}
+
+function ensureDecisionTimer(io, roomId, game) {
+    clearDecisionTimer(roomId);
+
+    if (!game || !game.decisionDeadlineAt || game.winner) return;
+
+    const delay = Math.max(0, game.decisionDeadlineAt - Date.now());
+    const timerId = setTimeout(async () => {
+        const liveGame = games.get(roomId);
+        if (!liveGame || liveGame.winner || !liveGame.decisionDeadlineAt) return;
+
+        if (liveGame.phase === 'bidding') {
+            for (const seat of Object.values(liveGame.seats)) {
+                if (seat.bid === null) {
+                    seat.bid = 0;
+                    liveGame.log.push(`${seat.user.nickname} 입찰 시간 초과: 0점 자동 입찰`);
+                }
+            }
+
+            if (Object.values(liveGame.seats).every((seat) => seat.bid !== null)) {
+                // submitBid 없이 양쪽 입찰이 채워진 경우 resolveBids와 같은 경로를 타도록 한쪽 submit은 불가능하므로 직접 처리하지 않고 내부 상태를 갱신한다.
+                const [firstKey, secondKey] = Object.keys(liveGame.seats);
+                const first = liveGame.seats[firstKey];
+                const second = liveGame.seats[secondKey];
+                let blackSeatKey;
+                if (first.bid > second.bid) blackSeatKey = firstKey;
+                else if (second.bid > first.bid) blackSeatKey = secondKey;
+                else {
+                    blackSeatKey = Math.random() < 0.5 ? firstKey : secondKey;
+                    liveGame.log.push('입찰이 같아서 흑/백을 랜덤으로 결정했습니다.');
+                }
+                const whiteSeatKey = blackSeatKey === firstKey ? secondKey : firstKey;
+                liveGame.players.black = liveGame.seats[blackSeatKey];
+                liveGame.players.white = liveGame.seats[whiteSeatKey];
+                liveGame.scores.white = liveGame.players.black.bid;
+                liveGame.scores.black = 0;
+                liveGame.phase = 'augment-selection';
+                liveGame.selection = {
+                    type: 'initial',
+                    index: 0,
+                    steps: [
+                        { color: 'white', mode: 'choose', count: 1, source: 'choices' },
+                        { color: 'black', mode: 'choose', count: 1, source: 'choices' },
+                        { color: 'white', mode: 'choose', count: 1, source: 'choices' }
+                    ]
+                };
+                liveGame.decisionDeadlineAt = Date.now() + 30000;
+                liveGame.log.push(`흑: ${liveGame.players.black.user.nickname}, 백: ${liveGame.players.white.user.nickname}`);
+                liveGame.log.push(`백은 ${liveGame.scores.white}점으로 시작합니다.`);
+            }
+        } else if (liveGame.phase === 'augment-selection') {
+            const step = currentSelectionStep(liveGame);
+            if (step) {
+                const choices = availableAugmentChoices(liveGame.players[step.color], step.source);
+                const autoIds = choices.slice(0, step.count).map((augment) => augment.id);
+                liveGame.log.push(`${step.color === 'black' ? '흑' : '백'} 증강 선택 시간 초과: 자동 선택`);
+                applyAugmentSelection(liveGame, step.color, autoIds);
+            }
+        }
+
+        if (liveGame.phase === 'playing') ensureClockInterval(io, roomId, liveGame);
+        ensureDecisionTimer(io, roomId, liveGame);
+        await emitState(io, roomId, liveGame);
+    }, delay);
+
+    decisionTimers.set(roomId, timerId);
 }
 
 async function emitState(io, roomId, game) {
@@ -167,6 +246,7 @@ async function handlePlayerExit(io, socket, reason = '상대가 방을 나갔습
     }
 
     io.in(roomId).socketsLeave(roomId);
+    clearDecisionTimer(roomId);
     cleanupRoom(roomId);
 }
 
@@ -201,6 +281,7 @@ function attachSocket(io) {
 
                 socket.emit('matchFound', { roomId });
                 opponent.socket.emit('matchFound', { roomId });
+                ensureDecisionTimer(io, roomId, game);
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
@@ -222,6 +303,7 @@ function attachSocket(io) {
                 if (!game) throw new Error('게임을 찾을 수 없습니다.');
 
                 submitBid(game, socket.id, bid);
+                ensureDecisionTimer(io, roomId, game);
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
@@ -238,6 +320,7 @@ function attachSocket(io) {
                 if (game.phase === 'playing') {
                     ensureClockInterval(io, roomId, game);
                 }
+                ensureDecisionTimer(io, roomId, game);
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
@@ -258,6 +341,7 @@ function attachSocket(io) {
                 if (game.phase === 'playing') {
                     ensureClockInterval(io, roomId, game);
                 }
+                ensureDecisionTimer(io, roomId, game);
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
