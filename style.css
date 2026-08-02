@@ -328,3 +328,70 @@ button:disabled { cursor: not-allowed; }
     color: white !important;
     font-weight: bold;
 }
+
+/* Selection History UI */
+.selection-history-container {
+    margin: 8px 0;
+    padding: 12px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+}
+.history-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: #6c757d;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.history-steps {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+.history-step-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 80px;
+}
+.history-color-tag {
+    font-size: 10px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 4px;
+    width: fit-content;
+}
+.history-color-tag.black { background: #222; color: #fff; }
+.history-color-tag.white { background: #fff; color: #222; border: 1px solid #ddd; }
+.history-augment-name {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.history-arrow {
+    color: #adb5bd;
+    font-weight: bold;
+}
+
+/* HUD Turn Badge */
+.hud-player-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.hud-turn-badge {
+    font-size: 11px;
+    background: #ff9500;
+    color: white;
+    padding: 1px 6px;
+    border-radius: 999px;
+    width: fit-content;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(255,149,0,0.3);
+}
