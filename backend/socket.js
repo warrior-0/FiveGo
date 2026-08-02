@@ -10,7 +10,8 @@ const {
     publicGameState,
     currentSelectionStep,
     selectAugments,
-    submitBid
+    submitBid,
+    resolveBids
 } = require('./game');
 
 const waiting = [];
@@ -77,19 +78,23 @@ function pruneWaiting() {
 }
 
 async function saveResultIfNeeded(game) {
-    if (game.resultSaved) return;
-
-
+    if (game.resultSaved || game.resultSaving) return;
 
     if (!game.winner) return;
+
+    game.resultSaving = true;
 
     const loser = game.winner === 'black' ? 'white' : 'black';
     const winnerId = game.players[game.winner].user.id;
     const loserId = game.players[loser].user.id;
 
-    await db.query('UPDATE users SET wins = wins + 1, rank_score = rank_score + 15 WHERE id = ?', [winnerId]);
-    await db.query('UPDATE users SET losses = losses + 1, rank_score = GREATEST(rank_score - 15, 0) WHERE id = ?', [loserId]);
-    game.resultSaved = true;
+    try {
+        await db.query('UPDATE users SET wins = wins + 1, rank_score = rank_score + 15 WHERE id = ?', [winnerId]);
+        await db.query('UPDATE users SET losses = losses + 1, rank_score = GREATEST(rank_score - 15, 0) WHERE id = ?', [loserId]);
+        game.resultSaved = true;
+    } finally {
+        game.resultSaving = false;
+    }
 }
 
 
@@ -119,35 +124,7 @@ function ensureDecisionTimer(io, roomId, game) {
             }
 
             if (Object.values(liveGame.seats).every((seat) => seat.bid !== null)) {
-                // submitBid 없이 양쪽 입찰이 채워진 경우 resolveBids와 같은 경로를 타도록 한쪽 submit은 불가능하므로 직접 처리하지 않고 내부 상태를 갱신한다.
-                const [firstKey, secondKey] = Object.keys(liveGame.seats);
-                const first = liveGame.seats[firstKey];
-                const second = liveGame.seats[secondKey];
-                let blackSeatKey;
-                if (first.bid > second.bid) blackSeatKey = firstKey;
-                else if (second.bid > first.bid) blackSeatKey = secondKey;
-                else {
-                    blackSeatKey = Math.random() < 0.5 ? firstKey : secondKey;
-                    liveGame.log.push('입찰이 같아서 흑/백을 랜덤으로 결정했습니다.');
-                }
-                const whiteSeatKey = blackSeatKey === firstKey ? secondKey : firstKey;
-                liveGame.players.black = liveGame.seats[blackSeatKey];
-                liveGame.players.white = liveGame.seats[whiteSeatKey];
-                liveGame.scores.white = liveGame.players.black.bid;
-                liveGame.scores.black = 0;
-                liveGame.phase = 'augment-selection';
-                liveGame.selection = {
-                    type: 'initial',
-                    index: 0,
-                    steps: [
-                        { color: 'white', mode: 'choose', count: 1, source: 'choices' },
-                        { color: 'black', mode: 'choose', count: 1, source: 'choices' },
-                        { color: 'white', mode: 'choose', count: 1, source: 'choices' }
-                    ]
-                };
-                liveGame.decisionDeadlineAt = Date.now() + 30000;
-                liveGame.log.push(`흑: ${liveGame.players.black.user.nickname}, 백: ${liveGame.players.white.user.nickname}`);
-                liveGame.log.push(`백은 ${liveGame.scores.white}점으로 시작합니다.`);
+                resolveBids(liveGame);
             }
         } else if (liveGame.phase === 'augment-selection') {
             const step = currentSelectionStep(liveGame);
@@ -161,14 +138,18 @@ function ensureDecisionTimer(io, roomId, game) {
 
         if (liveGame.phase === 'playing') ensureClockInterval(io, roomId, liveGame);
         ensureDecisionTimer(io, roomId, liveGame);
+        await finalizeResultIfNeeded(liveGame);
         await emitState(io, roomId, liveGame);
     }, delay);
 
     decisionTimers.set(roomId, timerId);
 }
 
-async function emitState(io, roomId, game) {
+async function finalizeResultIfNeeded(game) {
     await saveResultIfNeeded(game);
+}
+
+async function emitState(io, roomId, game) {
     io.to(roomId).emit('gameState', publicGameState(game));
 }
 
@@ -188,7 +169,8 @@ function ensureClockInterval(io, roomId, game) {
         const isTimedOut = applyTurnClock(liveGame);
 
         if (isTimedOut) {
-            // 시간패 발생 시 즉시 상태 전송 및 인터벌 종료
+            // 시간패 발생 시 즉시 결과 저장, 상태 전송 및 인터벌 종료
+            await finalizeResultIfNeeded(liveGame);
             await emitState(io, roomId, liveGame);
             clearInterval(intervalId);
             clockIntervals.delete(roomId);
@@ -204,6 +186,8 @@ function ensureClockInterval(io, roomId, game) {
 }
 
 function cleanupRoom(roomId) {
+    clearDecisionTimer(roomId);
+
     const intervalId = clockIntervals.get(roomId);
 
     if (intervalId) {
@@ -245,6 +229,7 @@ async function handlePlayerExit(io, socket, reason = '상대가 방을 나갔습
         game.log.push(`직접 '나가기' 버튼을 눌러 로비로 이동해 주세요.`);
         
         clearDecisionTimer(roomId);
+        await finalizeResultIfNeeded(game);
         await emitState(io, roomId, game);
     }
 }
@@ -281,6 +266,7 @@ function attachSocket(io) {
                 socket.emit('matchFound', { roomId });
                 opponent.socket.emit('matchFound', { roomId });
                 ensureDecisionTimer(io, roomId, game);
+                await finalizeResultIfNeeded(game);
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
@@ -303,6 +289,7 @@ function attachSocket(io) {
 
                 submitBid(game, socket.id, bid);
                 ensureDecisionTimer(io, roomId, game);
+                await finalizeResultIfNeeded(game);
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
@@ -320,6 +307,7 @@ function attachSocket(io) {
                     ensureClockInterval(io, roomId, game);
                 }
                 ensureDecisionTimer(io, roomId, game);
+                await finalizeResultIfNeeded(game);
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
@@ -334,11 +322,13 @@ function attachSocket(io) {
 
                 activateAugment(game, socket.id, augmentId);
                 ensureDecisionTimer(io, roomId, game);
+                await finalizeResultIfNeeded(game);
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
 
                 if (game?.winner) {
+                    await finalizeResultIfNeeded(game);
                     await emitState(io, roomId, game);
                 }
             }
@@ -359,11 +349,13 @@ function attachSocket(io) {
                     ensureClockInterval(io, roomId, game);
                 }
                 ensureDecisionTimer(io, roomId, game);
+                await finalizeResultIfNeeded(game);
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
 
                 if (game?.winner) {
+                    await finalizeResultIfNeeded(game);
                     await emitState(io, roomId, game);
                 }
             }
@@ -383,6 +375,7 @@ function attachSocket(io) {
                         game.log.push(`${game.players[color]?.user?.nickname || '상대'}님이 기권했습니다.`);
                     }
                     clearDecisionTimer(roomId);
+                    await finalizeResultIfNeeded(game);
                     await emitState(io, roomId, game);
                 }
                 

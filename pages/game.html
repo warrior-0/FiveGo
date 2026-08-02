@@ -114,6 +114,23 @@
         let pendingBidValue = 0;
         let boardSelectedAugmentIds = [];
         let lastDecisionSecond = null;
+        let lastSelectionKey = '';
+        let bidSubmitted = false;
+        let augmentSelectionSubmittedKey = null;
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>\"']/g, (char) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '\"': '&quot;',
+                "'": '&#39;'
+            }[char]));
+        }
+
+        function safeNumber(value) {
+            return Number.isFinite(Number(value)) ? Number(value) : 0;
+        }
         
         // 초기화
         for (let y = 0; y < 11; y += 1) {
@@ -151,6 +168,8 @@
         });
 
         document.getElementById('bidBtn').addEventListener('click', () => {
+            bidSubmitted = true;
+            renderBoardBidPanel(currentState);
             socket.emit('submitBid', { roomId, bid: pendingBidValue });
         });
 
@@ -159,6 +178,7 @@
             const stepColor = currentState.selection?.steps?.[currentState.selection.index]?.color;
             if (stepColor !== myColor) return;
             const augmentIds = [...document.querySelectorAll('#augmentChoices input:checked')].map((input) => Number(input.value));
+            augmentSelectionSubmittedKey = lastSelectionKey;
             socket.emit('selectAugments', { roomId, augmentIds });
         });
 
@@ -196,8 +216,14 @@
             myColor = findMyColor(state);
             
             // 페이즈가 변경될 때 선택 값 초기화
-            if (oldPhase !== state.phase) {
+            const selectionKey = state.selection ? `${state.selection.type}:${state.selection.index}:${state.selection.steps?.[state.selection.index]?.color}:${state.selection.steps?.[state.selection.index]?.source}` : '';
+            if (oldPhase !== state.phase || selectionKey !== lastSelectionKey) {
                 boardSelectedAugmentIds = [];
+                augmentSelectionSubmittedKey = null;
+                lastSelectionKey = selectionKey;
+            }
+            if (oldPhase !== state.phase && state.phase === 'bidding') {
+                bidSubmitted = false;
             }
             
             renderState(state);
@@ -302,8 +328,8 @@
 
         function calculateLiveClock(clockEntry, turnStartedAt, now) {
             let mainMs = clockEntry.mainMs;
-            let chipMs = clockEntry.chipMs;
-            let inChip = clockEntry.inChip || mainMs <= 0;
+            let byoYomiMs = clockEntry.byoYomiMs ?? clockEntry.chipMs ?? 0;
+            let inByoYomi = clockEntry.inByoYomi || clockEntry.inChip || mainMs <= 0;
 
             if (turnStartedAt) {
                 let elapsedMs = now - turnStartedAt;
@@ -313,16 +339,16 @@
                     elapsedMs -= spentMain;
                 }
                 if (elapsedMs > 0) {
-                    inChip = true;
-                    chipMs = Math.max(0, chipMs - elapsedMs);
+                    inByoYomi = true;
+                    byoYomiMs = Math.max(0, (currentState?.timeRule?.byoYomiMs || 20000) - elapsedMs);
                 }
             }
 
             const mainSec = Math.max(0, Math.ceil(mainMs / 1000));
-            const chipSec = Math.max(0, Math.ceil(chipMs / 1000));
+            const byoYomiSec = Math.max(0, Math.ceil(byoYomiMs / 1000));
 
-            if (!inChip) return `${formatSeconds(mainSec)} (초읽기 20초)`;
-            return `<span class="warning">0:00 (초읽기 ${chipSec}초)</span>`;
+            if (!inByoYomi) return `${formatSeconds(mainSec)} (초읽기 20초)`;
+            return `<span class="warning">0:00 (초읽기 ${byoYomiSec}초)</span>`;
         }
 
         function formatSeconds(totalSeconds) {
@@ -361,6 +387,7 @@
                 const availableChoices = source.filter((augment) => !selected.has(augment.id));
                 const required = Math.min(availableChoices.length, step.count);
                 const isMySelection = chooserColor === myColor;
+                const selectionSubmitted = augmentSelectionSubmittedKey === lastSelectionKey;
 
                 document.getElementById('augmentHelp').textContent = isMySelection
                     ? `${colorName(chooserColor)} 증강 선택 차례입니다. ${required}개를 선택하세요.`
@@ -369,9 +396,9 @@
                 const choicesDiv = document.getElementById('augmentChoices');
                 choicesDiv.innerHTML = availableChoices.map((augment) => `
                     <label class="augment-card compact augment-choice">
-                        <input type="checkbox" value="${augment.id}" data-required="${required}" ${!isMySelection ? 'disabled' : ''}>
-                        <strong>${augment.name}</strong>
-                        <span>${augment.description}</span>
+                        <input type="checkbox" value="${augment.id}" data-required="${required}" ${!isMySelection || selectionSubmitted ? 'disabled' : ''}>
+                        <strong>${escapeHtml(augment.name)}</strong>
+                        <span>${escapeHtml(augment.description)}</span>
                     </label>
                 `).join('');
             }
@@ -389,17 +416,17 @@
                 // 턴 기반 증강 정보 (골든 스니치 등)
                 let turnBadge = '';
                 if (player?.goldenSnitchRemainingTurns !== undefined) {
-                    turnBadge = `<div class="hud-turn-badge">스니치: ${player.goldenSnitchRemainingTurns}턴</div>`;
+                    turnBadge = `<div class="hud-turn-badge">스니치: ${safeNumber(player.goldenSnitchRemainingTurns)}턴</div>`;
                 }
 
                 return `
                     <div class="hud-player${turnClass}">
                         <span class="hud-color">${colorName(color)}</span>
                         <div class="hud-player-main">
-                            <strong>${player?.user?.nickname || '대기 중'}</strong>
+                            <strong>${escapeHtml(player?.user?.nickname || '대기 중')}</strong>
                             ${turnBadge}
                         </div>
-                        <span class="hud-score">${state.scores[color]}점</span>
+                        <span class="hud-score">${safeNumber(state.scores[color])}점</span>
                         <span class="hud-clock">${clock}</span>
                     </div>
                 `;
@@ -433,7 +460,7 @@
             }
 
             overlay.innerHTML = `
-                <div><strong>${title}</strong><span>${description}</span></div>
+                <div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></div>
                 ${showDecisionTimer ? `<progress max="${30 * 1000}" value="${remainingMs}"></progress>` : ''}
             `;
         }
@@ -451,10 +478,10 @@
             const queueList = document.getElementById('queueList');
             if (state.augmentQueue && state.augmentQueue.length > 0) {
                 queueList.innerHTML = state.augmentQueue.map((entry, idx) => `
-                    <div class="queue-item ${entry.color}">
+                    <div class="queue-item ${entry.effectiveColor || entry.color || entry.ownerColor}">
                         <span class="queue-index">${idx + 1}</span>
-                        <span class="queue-name">${entry.augment.name}</span>
-                        <span class="queue-owner-tag ${entry.color}">${colorName(entry.color)}</span>
+                        <span class="queue-name">${escapeHtml(entry.augment.name)}</span>
+                        <span class="queue-owner-tag ${entry.effectiveColor || entry.color || entry.ownerColor}">${colorName(entry.effectiveColor || entry.color || entry.ownerColor)}</span>
                     </div>
                 `).join('');
             } else {
@@ -474,10 +501,10 @@
                     return augments.map(a => {
                         let turnInfo = '';
                         if (a.effect === 'golden_snitch' && player.goldenSnitchRemainingTurns !== undefined) {
-                            turnInfo = ` <small>(${player.goldenSnitchRemainingTurns}턴 남음)</small>`;
+                            turnInfo = ` <small>(${safeNumber(player.goldenSnitchRemainingTurns)}턴 남음)</small>`;
                         }
                         const triggeredClass = isTriggered ? ' style="opacity: 0.6; text-decoration: line-through;"' : '';
-                        return `<span${triggeredClass}>${a.name}${turnInfo}</span>`;
+                        return `<span${triggeredClass}>${escapeHtml(a.name)}${turnInfo}</span>`;
                     }).join(', ') || '없음';
                 };
 
@@ -490,7 +517,7 @@
                             <div class="badge-content">
                                 <div class="badge-item">
                                     <span class="badge-label">남은 턴</span>
-                                    <span class="badge-value">${player.goldenSnitchRemainingTurns}</span>
+                                    <span class="badge-value">${safeNumber(player.goldenSnitchRemainingTurns)}</span>
                                 </div>
                             </div>
                         </div>
@@ -530,18 +557,18 @@
             panel.innerHTML = `
                 <div class="board-selection-header">
                     <strong>흑 입찰</strong>
-                    <span>${seat?.bid === null ? '점수를 양보해 흑을 입찰하세요' : '입찰 제출 완료'}</span>
+                    <span>${seat?.bid === null && !bidSubmitted ? '점수를 양보해 흑을 입찰하세요' : '입찰 제출 완료'}</span>
                     ${remainingText ? `<span class="decision-time-pill">남은 시간 ${remainingText}</span>` : ''}
                 </div>
                 <div class="bid-choice-grid">
                     ${[0, 1, 2, 3].map((value) => `
-                        <button type="button" class="bid-choice${Number(pendingBidValue) === value ? ' selected' : ''}" data-bid-value="${value}" ${seat?.bid !== null ? 'disabled' : ''}>
+                        <button type="button" class="bid-choice${Number(pendingBidValue) === value ? ' selected' : ''}" data-bid-value="${value}" ${seat?.bid !== null || bidSubmitted ? 'disabled' : ''}>
                             <strong>${value}점</strong>
                             <span>양보</span>
                         </button>
                     `).join('')}
                 </div>
-                <button type="button" data-board-bid-confirm ${seat?.bid !== null ? 'disabled' : ''}>입찰 확정</button>
+                <button type="button" data-board-bid-confirm ${seat?.bid !== null || bidSubmitted ? 'disabled' : ''}>입찰 확정</button>
             `;
         }
 
@@ -565,6 +592,7 @@
             const availableChoices = source.filter((augment) => !selected.has(augment.id));
             const required = Math.min(availableChoices.length, step.count);
             const isMySelection = chooserColor === myColor;
+            const selectionSubmitted = augmentSelectionSubmittedKey === lastSelectionKey;
 
             // 표시할 선택된 ID 목록 결정 (내 차례면 로컬 변수, 상대 차례면 서버 데이터)
             const displaySelectedIds = isMySelection ? boardSelectedAugmentIds : (player.selectedAugmentIds || []);
@@ -596,8 +624,8 @@
                                     return `
                                         <div class="history-step-item ${s.color}">
                                             <span class="history-color-tag ${s.color}">${colorName(s.color)}</span>
-                                            <span class="history-augment-name">${augmentName}</span>
-                                            ${augmentDescription ? `<span class="history-augment-description">${augmentDescription}</span>` : ''}
+                                            <span class="history-augment-name">${escapeHtml(augmentName)}</span>
+                                            ${augmentDescription ? `<span class="history-augment-description">${escapeHtml(augmentDescription)}</span>` : ''}
                                         </div>
                                     `;
                                 }).join('<div class="history-arrow">→</div>')}
@@ -616,13 +644,13 @@
                 ${historyHtml}
                 <div class="board-selection-list">
                     ${availableChoices.map((augment) => `
-                        <button type="button" class="augment-card compact augment-choice${displaySelectedIds.includes(augment.id) ? ' selected' : ''}" data-augment-id="${augment.id}" data-required="${required}" ${!isMySelection ? 'disabled' : ''}>
-                            <strong>${augment.name}</strong>
-                            <span>${augment.description}</span>
+                        <button type="button" class="augment-card compact augment-choice${displaySelectedIds.includes(augment.id) ? ' selected' : ''}" data-augment-id="${augment.id}" data-required="${required}" ${!isMySelection || selectionSubmitted ? 'disabled' : ''}>
+                            <strong>${escapeHtml(augment.name)}</strong>
+                            <span>${escapeHtml(augment.description)}</span>
                         </button>
                     `).join('')}
                 </div>
-                ${isMySelection ? '<button type="button" data-board-confirm>증강 확정</button>' : ''}
+                ${isMySelection ? `<button type="button" data-board-confirm ${selectionSubmitted ? 'disabled' : ''}>증강 확정</button>` : ''}
             `;
         }
 
@@ -651,6 +679,8 @@
                 return;
             }
             if (event.target.closest('[data-board-bid-confirm]')) {
+                bidSubmitted = true;
+                renderBoardBidPanel(currentState);
                 socket.emit('submitBid', { roomId, bid: pendingBidValue });
             }
         });
@@ -670,6 +700,8 @@
                 return;
             }
             if (event.target.closest('[data-board-confirm]')) {
+                augmentSelectionSubmittedKey = lastSelectionKey;
+                renderBoardSelectionPanel(currentState);
                 socket.emit('selectAugments', { roomId, augmentIds: boardSelectedAugmentIds });
             }
         });
@@ -755,8 +787,8 @@
             if (!augments.length) return '<p>없음</p>';
             return augments.map(a => `
                 <article class="modal-augment-card">
-                    <strong>${a.name}${triggeredIds.includes(a.id) ? ' (발동됨)' : ''}</strong>
-                    <p>${a.description}</p>
+                    <strong>${escapeHtml(a.name)}${triggeredIds.includes(a.id) ? ' (발동됨)' : ''}</strong>
+                    <p>${escapeHtml(a.description)}</p>
                     ${currentState?.phase === 'playing' && (currentState.players[myColor]?.handAugments || []).some(h => h.id === a.id) ? `<button type="button" data-activate-augment="${a.id}">발동</button>` : ''}
                 </article>
             `).join('');
@@ -770,12 +802,12 @@
         function renderQueueDetails(queue) {
             if (!queue.length) return '<p>비어 있음</p>';
             return queue.map((e, idx) => `
-                <article class="modal-augment-card ${e.color}">
+                <article class="modal-augment-card ${e.effectiveColor || e.color || e.ownerColor}">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <strong>${idx + 1}. ${e.augment.name}</strong>
-                        <span class="queue-owner-tag ${e.color}">${colorName(e.color)}</span>
+                        <strong>${idx + 1}. ${escapeHtml(e.augment.name)}</strong>
+                        <span class="queue-owner-tag ${e.effectiveColor || e.color || e.ownerColor}">${colorName(e.effectiveColor || e.color || e.ownerColor)}</span>
                     </div>
-                    <p>${e.augment.description}</p>
+                    <p>${escapeHtml(e.augment.description)}</p>
                     <small style="color: #666;">발동 시점: ${e.augment.timing === 'passive' ? '자동' : e.augment.timing}</small>
                 </article>
             `).join('');
@@ -796,7 +828,7 @@
                 if (i.includes('흑의') || i.includes('흑 입찰')) style = 'color: #333; font-weight: bold;';
                 else if (i.includes('백의') || i.includes('백 입찰')) style = 'color: #666;';
                 else if (i.includes('발동')) style = 'color: #007aff; font-weight: bold; background: #eef6ff; padding: 2px 4px; border-radius: 4px;';
-                return `<p style="${style}">${i}</p>`;
+                return `<p style="${style}">${escapeHtml(i)}</p>`;
             }).join('');
             
             if (isAtBottom) {
