@@ -528,6 +528,9 @@
             const required = Math.min(availableChoices.length, step.count);
             const isMySelection = chooserColor === myColor;
 
+            // 표시할 선택된 ID 목록 결정 (내 차례면 로컬 변수, 상대 차례면 서버 데이터)
+            const displaySelectedIds = isMySelection ? boardSelectedAugmentIds : (player.selectedAugmentIds || []);
+
             panel.innerHTML = `
                 <div class="board-selection-header">
                     <strong>${colorName(chooserColor)} 증강 선택</strong>
@@ -535,7 +538,7 @@
                 </div>
                 <div class="board-selection-list">
                     ${availableChoices.map((augment) => `
-                        <button type="button" class="augment-card compact augment-choice${boardSelectedAugmentIds.includes(augment.id) ? ' selected' : ''}" data-augment-id="${augment.id}" data-required="${required}" ${!isMySelection ? 'disabled' : ''}>
+                        <button type="button" class="augment-card compact augment-choice${displaySelectedIds.includes(augment.id) ? ' selected' : ''}" data-augment-id="${augment.id}" data-required="${required}" ${!isMySelection ? 'disabled' : ''}>
                             <strong>${augment.name}</strong>
                             <span>${augment.description}</span>
                         </button>
