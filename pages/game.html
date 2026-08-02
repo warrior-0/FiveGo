@@ -382,14 +382,6 @@
         function renderBoardActions(state) {
             const actions = document.getElementById('boardActions');
             const buttons = [];
-            for (const color of ['black', 'white']) {
-                const player = state.players[color];
-                if (!player) continue;
-                buttons.push(`<button type="button" data-modal="${color}-active">${colorName(color)} 활성 ${player.activeAugments?.length || 0}</button>`);
-                buttons.push(`<button type="button" data-modal="${color}-reserve">${colorName(color)} 대기 ${player.reserveAugments?.length || 0}</button>`);
-                buttons.push(`<button type="button" data-modal="${color}-hand">${colorName(color)} 손패 ${player.handAugments?.length || 0}</button>`);
-            }
-            buttons.push(`<button type="button" data-modal="queue">증강 큐 ${state.augmentQueue?.length || 0}</button>`);
             if (state.phase === 'playing' && !state.winner) {
                 buttons.push('<button type="button" class="surrender-button" data-board-surrender>항복</button>');
             }
@@ -405,15 +397,11 @@
                     <article class="augment-summary-card">
                         <button type="button" data-modal="${color}-all"><strong>${colorName(color)} 증강</strong></button>
                         <p><span>활성</span> ${player.activeAugments.map(a => a.name).join(', ') || '없음'}</p>
+                        <p><span>대기</span> ${player.reserveAugments.map(a => a.name).join(', ') || '없음'}</p>
                         <p><span>손패</span> ${player.handAugments.map(a => a.name).join(', ') || '없음'}</p>
                     </article>
                 `;
-            }).join('') + `
-                <article class="augment-summary-card queue-summary">
-                    <button type="button" data-modal="queue"><strong>증강 큐</strong></button>
-                    <p>${(state.augmentQueue || []).map(e => `${colorName(e.color)} ${e.augment.name}`).join(' → ') || '비어 있음'}</p>
-                </article>
-            `;
+            }).join('');
         }
 
         function renderDecisionPanels(state) {
