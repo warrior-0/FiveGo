@@ -219,10 +219,6 @@
         }
 
         function renderState(state) {
-            document.getElementById('blackScore').textContent = state.scores.black;
-            document.getElementById('whiteScore').textContent = state.scores.white;
-            document.getElementById('myColor').textContent = `색상: ${myColor ? colorName(myColor) : '입찰 중'}`;
-            
             renderBoard(state.board, state.lastMove);
             renderPanels(state);
             renderLog(state.log);
@@ -237,7 +233,8 @@
             // UI 가시성 제어
             const isGameActive = Boolean(roomId);
             document.getElementById('preMatchRules').classList.toggle('hidden', isGameActive);
-            document.getElementById('gameStats').classList.toggle('hidden', !isGameActive);
+            document.getElementById('gameStats').classList.add('hidden'); // 항상 숨김 (HUD에서 확인 가능)
+            document.getElementById('myColor').classList.add('hidden');   // 항상 숨김 (HUD에서 확인 가능)
             
             // 나가기/항복 버튼 제어
             const leaveBtn = document.getElementById('leaveBtn');
@@ -277,13 +274,9 @@
         function updateLiveElements(state) {
             const now = Date.now();
             
-            // 상단 클락 정보 업데이트
-            const clockInfo = document.getElementById('clockInfo');
-            const isLiveTurn = state.phase === 'playing' && !state.winner;
-            const blackDisplay = calculateLiveClock(state.clock.black, isLiveTurn && state.turn === 'black' ? state.clock.turnStartedAt : null, now);
-            const whiteDisplay = calculateLiveClock(state.clock.white, isLiveTurn && state.turn === 'white' ? state.clock.turnStartedAt : null, now);
-            clockInfo.innerHTML = `<div>흑: ${blackDisplay}</div><div>백: ${whiteDisplay}</div>`;
-
+            // 상단 클락 정보 업데이트 제거 (HUD에서 확인 가능)
+            document.getElementById('clockInfo').classList.add('hidden');
+            
             // HUD 업데이트
             renderPlayerHud(state, now);
             
@@ -377,12 +370,12 @@
                 const clock = calculateLiveClock(state.clock[color], isLiveTurn && state.turn === color ? state.clock.turnStartedAt : null, now);
                 const turnClass = state.phase === 'playing' && state.turn === color ? ' active-turn' : '';
                 return `
-                    <button class="hud-player${turnClass}" type="button" data-modal="${color}-all">
+                    <div class="hud-player${turnClass}">
                         <span class="hud-color">${colorName(color)}</span>
                         <strong>${player?.user?.nickname || '대기 중'}</strong>
                         <span class="hud-score">${state.scores[color]}점</span>
                         <span class="hud-clock">${clock}</span>
-                    </button>
+                    </div>
                 `;
             }).join('');
         }
@@ -448,7 +441,10 @@
 
                 container.innerHTML = `
                     <article class="augment-summary-card" style="width: 100%;">
-                        <button type="button" data-modal="${color}-all" style="width: 100%; margin-bottom: 8px;"><strong>${colorName(color)} 증강 정보</strong></button>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <strong>${colorName(color)} 증강 정보</strong>
+                            <button type="button" data-modal="${color}-all" class="augment-detail-btn">${colorName(color)} 증강 상세확인</button>
+                        </div>
                         <div class="augment-status">
                             <p><span>활성:</span> ${renderAugmentList(untriggered(player.activeAugments, player), color)}</p>
                             <p><span>대기:</span> ${renderAugmentList(player.reserveAugments, color)}</p>
@@ -552,33 +548,43 @@
             }
         });
 
-        // 모달 관련
-        document.getElementById('playerHud').addEventListener('click', handleModalClick);
-        document.getElementById('boardActions').addEventListener('click', (event) => {
+        // 모달 및 액션 관련 통합 이벤트 위임
+        document.querySelector('.game-layout').addEventListener('click', (event) => {
+            // 항복 확인
             if (event.target.closest('[data-board-surrender]')) {
                 document.getElementById('surrenderBackdrop').classList.remove('hidden');
                 return;
             }
-            handleModalClick(event);
-        });
-        document.getElementById('augmentSummary').addEventListener('click', handleModalClick);
-        document.getElementById('augmentModalBody').addEventListener('click', handleModalClick);
-        
-        function handleModalClick(event) {
-            const button = event.target.closest('[data-modal]');
-            if (button && currentState) openAugmentModal(button.dataset.modal);
-            const activateButton = event.target.closest('[data-activate-augment]');
-            if (activateButton && currentState?.phase === 'playing') {
-                socket.emit('activateAugment', { roomId, augmentId: Number(activateButton.dataset.activateAugment) });
+            
+            // 모달 열기
+            const modalBtn = event.target.closest('[data-modal]');
+            if (modalBtn && currentState) {
+                openAugmentModal(modalBtn.dataset.modal);
+                return;
             }
-        }
+            
+            // 증강 활성화
+            const activateBtn = event.target.closest('[data-activate-augment]');
+            if (activateBtn && currentState?.phase === 'playing') {
+                socket.emit('activateAugment', { roomId, augmentId: Number(activateBtn.dataset.activateAugment) });
+            }
+        });
+        
+        document.getElementById('augmentModalBody').addEventListener('click', (event) => {
+            const activateBtn = event.target.closest('[data-activate-augment]');
+            if (activateBtn && currentState?.phase === 'playing') {
+                socket.emit('activateAugment', { roomId, augmentId: Number(activateBtn.dataset.activateAugment) });
+            }
+        });
+        
+
 
         document.getElementById('surrenderCancelBtn').addEventListener('click', () => {
             document.getElementById('surrenderBackdrop').classList.add('hidden');
         });
         document.getElementById('surrenderConfirmBtn').addEventListener('click', () => {
             document.getElementById('surrenderBackdrop').classList.add('hidden');
-            emitAndGoLobby('leaveRoom');
+            socket.emit('leaveRoom');
         });
 
         document.getElementById('augmentModalClose').addEventListener('click', closeAugmentModal);
@@ -641,17 +647,15 @@
         }
 
         function renderGameInfo(state) {
+            // 중복 정보 제거 (HUD에서 확인 가능)
             const container = document.getElementById('playerInfoContainer');
-            if (!container) return;
-            container.innerHTML = ['black', 'white'].map(c => {
-                const p = state.players[c];
-                if (!p) return '';
-                return `<article class="player-info"><h2>${colorName(c)} - ${p.user.nickname}</h2><p>입찰: ${p.bid ?? '?'}</p></article>`;
-            }).join('');
+            if (container) container.innerHTML = '';
         }
 
         function renderLog(log) { 
             const logDiv = document.getElementById('log');
+            const isAtBottom = logDiv.scrollHeight - logDiv.scrollTop <= logDiv.clientHeight + 50;
+            
             logDiv.innerHTML = log.map(i => {
                 let style = '';
                 if (i.includes('흑의') || i.includes('흑 입찰')) style = 'color: #333; font-weight: bold;';
@@ -659,7 +663,10 @@
                 else if (i.includes('발동')) style = 'color: #007aff; font-weight: bold; background: #eef6ff; padding: 2px 4px; border-radius: 4px;';
                 return `<p style="${style}">${i}</p>`;
             }).join('');
-            logDiv.scrollTop = logDiv.scrollHeight;
+            
+            if (isAtBottom) {
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
         }
         function colorName(c) { return c === 'black' ? '흑' : '백'; }
     </script>

@@ -233,6 +233,19 @@ button:disabled { cursor: not-allowed; }
 .augment-summary { display: none; }
 .augment-summary-card { display: grid; gap: 5px; padding: 10px; border: 1px solid #ddd; border-radius: 12px; background: rgba(255,255,255,0.94); font-size: 12px; min-width: 0; }
 .augment-summary-card button { width: auto; padding: 6px 8px; background: #f7f7f7; color: #222; border: 1px solid #ddd; }
+.augment-detail-btn {
+    background: #007aff !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 4px !important;
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+    cursor: pointer !important;
+    width: auto !important;
+}
+.augment-detail-btn:hover {
+    background: #0056b3 !important;
+}
 .augment-summary-card p { margin: 0; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .augment-summary-card span { font-weight: bold; color: #555; }
 .queue-summary { display: none; }
