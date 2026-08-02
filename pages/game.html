@@ -37,8 +37,38 @@
             <a id="leaveBtn" class="button-link" href="lobby.html">나가기</a>
         </section>
 
-        <section id="board" class="board" aria-label="11x11 오둑판"></section>
+        <section class="board-stage" aria-label="오둑판 집중 정보 영역">
+            <div id="phaseOverlay" class="phase-overlay"></div>
+            <div id="playerHud" class="board-hud"></div>
+            <section id="board" class="board" aria-label="11x11 오둑판"></section>
+            <div id="augmentSummary" class="augment-summary"></div>
+            <div id="boardActions" class="board-actions"></div>
+        </section>
         <aside id="gameInfo" class="game-info hidden" aria-label="게임 정보"></aside>
+
+        <div id="decisionBackdrop" class="decision-backdrop hidden" aria-live="polite">
+            <div id="boardBidPanel" class="board-decision-card hidden"></div>
+            <div id="boardSelectionPanel" class="board-decision-card hidden"></div>
+        </div>
+
+        <div id="surrenderBackdrop" class="decision-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="surrenderTitle">
+            <div class="board-decision-card surrender-card">
+                <h2 id="surrenderTitle">정말 항복하시겠습니까?</h2>
+                <p>확인하면 즉시 패배 처리되고 로비로 이동합니다.</p>
+                <div class="confirm-actions">
+                    <button type="button" class="danger-fill" id="surrenderConfirmBtn">예, 항복합니다</button>
+                    <button type="button" id="surrenderCancelBtn">아니오</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="augmentModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="augmentModalTitle">
+            <article class="modal-card">
+                <button id="augmentModalClose" class="modal-close" type="button" aria-label="닫기">×</button>
+                <h2 id="augmentModalTitle"></h2>
+                <div id="augmentModalBody" class="modal-body"></div>
+            </article>
+        </div>
     </main>
 
     <script src="../js/api.js"></script>
@@ -52,6 +82,8 @@
         let mySocketId = null;
         let myColor = null;
         let pendingBidValue = document.getElementById('bidInput').value;
+        let boardSelectedAugmentIds = [];
+        let boardSelectionKey = null;
 
         for (let y = 0; y < 11; y += 1) {
             for (let x = 0; x < 11; x += 1) {
@@ -96,6 +128,11 @@
         });
 
         document.getElementById('augmentBtn').addEventListener('click', () => {
+            if (currentState?.phase !== 'augment-selection') return;
+
+            const stepColor = currentState.selection?.steps?.[currentState.selection.index]?.color;
+            if (stepColor !== myColor) return;
+
             const augmentIds = [...document.querySelectorAll('#augmentChoices input:checked')].map((input) => Number(input.value));
             socket.emit('selectAugments', { roomId, augmentIds });
         });
@@ -158,6 +195,7 @@
             roomId = null;
             currentState = null;
             alert(msg);
+            window.location.href = 'lobby.html';
         });
 
         function findMyColor(state) {
@@ -178,7 +216,10 @@
 
             renderBoard(state.board, state.lastMove);
             renderPanels(state);
+            renderBoardFocusInfo(state);
+            renderDecisionPanels(state);
             renderGameInfo(state);
+            document.querySelector('.game-layout').classList.toggle('board-focus-mode', Boolean(roomId));
             renderLog(state.log);
 
             if (state.winner) {
@@ -201,17 +242,21 @@
         // 클라이언트 타이머 렌더 루프
         setInterval(() => {
             if (!currentState || !currentState.clock) return;
-            
+
             const clockInfo = document.getElementById('clockInfo');
             const now = Date.now();
-            
-            const blackDisplay = calculateLiveClock(currentState.clock.black, currentState.turn === 'black' ? currentState.clock.turnStartedAt : null, now);
-            const whiteDisplay = calculateLiveClock(currentState.clock.white, currentState.turn === 'white' ? currentState.clock.turnStartedAt : null, now);
-            
+
+            const isLiveTurn = currentState.phase === 'playing' && !currentState.winner;
+            const blackDisplay = calculateLiveClock(currentState.clock.black, isLiveTurn && currentState.turn === 'black' ? currentState.clock.turnStartedAt : null, now);
+            const whiteDisplay = calculateLiveClock(currentState.clock.white, isLiveTurn && currentState.turn === 'white' ? currentState.clock.turnStartedAt : null, now);
+
             clockInfo.innerHTML = `
                 <div>흑: ${blackDisplay}</div>
                 <div>백: ${whiteDisplay}</div>
             `;
+
+            renderBoardFocusInfo(currentState);
+            renderDecisionPanels(currentState);
         }, 200); // 0.2초마다 갱신하여 더 부드럽게 표시
 
         function renderClock(state) {
@@ -280,23 +325,380 @@
                 document.getElementById('bidInput').value = pendingBidValue;
             }
             const step = state.selection?.steps?.[state.selection.index];
-            augmentPanel.classList.toggle('hidden', state.phase !== 'augment-selection' || !myColor || step?.color !== myColor);
+            augmentPanel.classList.toggle('hidden', state.phase !== 'augment-selection' || !step);
 
-            if (state.phase === 'augment-selection' && myColor && step?.color === myColor) {
-                const player = state.players[myColor];
+            if (state.phase === 'augment-selection' && step) {
+                const chooserColor = step.color;
+                const player = state.players[chooserColor];
                 const selected = new Set(player.selectedAugmentIds || []);
                 const source = step.source === 'reserve' ? player.reserveAugments : player.choices;
                 const availableChoices = source.filter((augment) => !selected.has(augment.id));
                 const required = Math.min(availableChoices.length, step.count);
-                document.getElementById('augmentHelp').textContent = `${colorName(myColor)} 증강 선택 차례입니다. ${required}개를 고릅니다. 제한시간은 선택마다 30초입니다.`;
+                const isMySelection = chooserColor === myColor;
+
+                document.getElementById('augmentHelp').textContent = isMySelection
+                    ? `${colorName(chooserColor)} 증강 선택 차례입니다. ${required}개를 고른 뒤 확정하세요. 제한시간은 선택마다 30초입니다.`
+                    : `${colorName(chooserColor)} 증강 선택 차례입니다. 상대 선택지를 확인할 수 있지만 선택할 수는 없습니다.`;
+                document.getElementById('augmentBtn').classList.toggle('hidden', !isMySelection);
+                document.getElementById('augmentBtn').disabled = false;
+                document.getElementById('augmentBtn').textContent = '증강 확정';
                 document.getElementById('augmentChoices').innerHTML = availableChoices.map((augment) => `
-                    <label class="augment-card compact">
-                        <input type="checkbox" value="${augment.id}" data-required="${required}">
+                    <label class="augment-card compact augment-choice${isMySelection ? '' : ' view-only'}">
+                        ${isMySelection ? `<input type="checkbox" value="${augment.id}" data-required="${required}">` : ''}
                         <strong>${augment.name}</strong>
                         <span>${augment.description}</span>
                     </label>
                 `).join('');
+            } else {
+                document.getElementById('augmentBtn').classList.remove('hidden');
+                document.getElementById('augmentBtn').disabled = false;
+                document.getElementById('augmentBtn').textContent = '증강 확정';
             }
+        }
+
+
+        document.getElementById('boardBidPanel').addEventListener('click', (event) => {
+            const bidButton = event.target.closest('[data-bid-value]');
+            if (bidButton) {
+                pendingBidValue = bidButton.dataset.bidValue;
+                renderDecisionPanels(currentState);
+                return;
+            }
+
+            if (event.target.closest('[data-board-bid-confirm]')) {
+                socket.emit('submitBid', { roomId, bid: Number(pendingBidValue) });
+            }
+        });
+
+        document.getElementById('boardSelectionPanel').addEventListener('click', (event) => {
+            const choiceButton = event.target.closest('[data-augment-id]');
+            if (choiceButton && currentState?.phase === 'augment-selection') {
+                const step = currentState.selection?.steps?.[currentState.selection.index];
+                if (step?.color !== myColor) return;
+
+                const id = Number(choiceButton.dataset.augmentId);
+                const required = Number(choiceButton.dataset.required || 0);
+                const exists = boardSelectedAugmentIds.includes(id);
+                boardSelectedAugmentIds = exists
+                    ? boardSelectedAugmentIds.filter((candidate) => candidate !== id)
+                    : [...boardSelectedAugmentIds, id].slice(-required);
+                renderDecisionPanels(currentState);
+                return;
+            }
+
+            const confirmButton = event.target.closest('[data-board-confirm]');
+            if (!confirmButton || currentState?.phase !== 'augment-selection') return;
+
+            const stepColor = currentState.selection?.steps?.[currentState.selection.index]?.color;
+            if (stepColor !== myColor) return;
+
+            socket.emit('selectAugments', { roomId, augmentIds: boardSelectedAugmentIds });
+        });
+
+        function renderDecisionPanels(state) {
+            renderBoardBidPanel(state);
+            renderBoardSelectionPanel(state);
+            document.getElementById('decisionBackdrop').classList.toggle('hidden', state.phase !== 'bidding' && state.phase !== 'augment-selection');
+        }
+
+        function renderBoardBidPanel(state) {
+            const panel = document.getElementById('boardBidPanel');
+            panel.classList.toggle('hidden', state.phase !== 'bidding');
+            if (state.phase !== 'bidding') {
+                panel.innerHTML = '';
+                return;
+            }
+
+            const seat = mySeat(state);
+            panel.innerHTML = `
+                <div class="board-selection-header">
+                    <strong>흑 입찰</strong>
+                    <span>${decisionTimeLabel(state)} · ${seat?.bid === null ? '점수를 양보해 흑을 입찰하세요' : '입찰 제출 완료'}</span>
+                </div>
+                <div class="bid-choice-grid">
+                    ${[0, 1, 2, 3].map((value) => `
+                        <button type="button" class="bid-choice${Number(pendingBidValue) === value ? ' selected' : ''}" data-bid-value="${value}" ${seat?.bid !== null ? 'disabled' : ''}>
+                            <strong>${value}점</strong>
+                            <span>양보</span>
+                        </button>
+                    `).join('')}
+                </div>
+                <button type="button" data-board-bid-confirm ${seat?.bid !== null ? 'disabled' : ''}>입찰 확정</button>
+            `;
+        }
+
+        function renderBoardSelectionPanel(state) {
+            const panel = document.getElementById('boardSelectionPanel');
+            const step = state.selection?.steps?.[state.selection.index];
+            panel.classList.toggle('hidden', state.phase !== 'augment-selection' || !step);
+
+            if (state.phase !== 'augment-selection' || !step) {
+                panel.innerHTML = '';
+                boardSelectedAugmentIds = [];
+                boardSelectionKey = null;
+                return;
+            }
+
+            const chooserColor = step.color;
+            const player = state.players[chooserColor];
+            const selected = new Set(player.selectedAugmentIds || []);
+            const source = step.source === 'reserve' ? player.reserveAugments : player.choices;
+            const availableChoices = source.filter((augment) => !selected.has(augment.id));
+            const availableIds = new Set(availableChoices.map((augment) => augment.id));
+            const required = Math.min(availableChoices.length, step.count);
+            const isMySelection = chooserColor === myColor;
+            const nextSelectionKey = `${chooserColor}:${step.source}:${state.selection.index}:${availableChoices.map((augment) => augment.id).join(',')}`;
+            if (boardSelectionKey !== nextSelectionKey) {
+                boardSelectionKey = nextSelectionKey;
+                boardSelectedAugmentIds = [];
+            }
+            boardSelectedAugmentIds = boardSelectedAugmentIds.filter((id) => availableIds.has(id)).slice(0, required);
+
+            panel.innerHTML = `
+                <div class="board-selection-header">
+                    <strong>${colorName(chooserColor)} 증강 선택</strong>
+                    <span>${decisionTimeLabel(state)} · ${isMySelection ? `${required}개 선택 후 확정` : '상대 선택지 공개'}</span>
+                </div>
+                <div class="board-selection-list">
+                    ${availableChoices.map((augment) => `
+                        <button type="button" class="augment-card compact augment-choice${isMySelection && boardSelectedAugmentIds.includes(augment.id) ? ' selected' : ''}${isMySelection ? '' : ' view-only'}" data-augment-id="${augment.id}" data-required="${required}" ${isMySelection ? '' : 'disabled'}>
+                            <strong>${augment.name}</strong>
+                            <span>${augment.description}</span>
+                        </button>
+                    `).join('')}
+                </div>
+                ${isMySelection ? '<button type="button" data-board-confirm>증강 확정</button>' : ''}
+            `;
+        }
+
+        function renderBoardFocusInfo(state) {
+            renderPlayerHud(state);
+            renderPhaseOverlay(state);
+            renderAugmentSummary(state);
+            renderBoardActions(state);
+        }
+
+
+        function decisionTimeLabel(state) {
+            if (!state.decisionDeadlineAt) return '제한시간 없음';
+            return `남은 시간 ${Math.max(0, Math.ceil((state.decisionDeadlineAt - Date.now()) / 1000))}초`;
+        }
+
+        function renderAugmentSummary(state) {
+            const summary = document.getElementById('augmentSummary');
+            if (!state.players.black && !state.players.white) {
+                summary.innerHTML = '';
+                return;
+            }
+
+            summary.innerHTML = ['black', 'white'].map((color) => {
+                const player = state.players[color];
+                if (!player) return '';
+                return `
+                    <article class="augment-summary-card">
+                        <button type="button" data-modal="${color}-all"><strong>${colorName(color)} 증강판</strong></button>
+                        ${renderAugmentSummaryRow('활성', player.activeAugments)}
+                        ${renderAugmentSummaryRow('대기', player.reserveAugments)}
+                        ${renderAugmentSummaryRow('손패', player.handAugments)}
+                    </article>
+                `;
+            }).join('') + `
+                <article class="augment-summary-card queue-summary">
+                    <button type="button" data-modal="queue"><strong>증강 큐</strong></button>
+                    <p>${(state.augmentQueue || []).map((entry) => `${colorName(entry.color)} ${entry.augment.name}`).join(' → ') || '비어 있음'}</p>
+                </article>
+            `;
+        }
+
+        function renderAugmentSummaryRow(label, augments = []) {
+            return `<p><span>${label}</span> ${augments.map((augment) => augment.name).join(', ') || '없음'}</p>`;
+        }
+
+        function renderPlayerHud(state) {
+            const hud = document.getElementById('playerHud');
+            const now = Date.now();
+
+            hud.innerHTML = ['black', 'white'].map((color) => {
+                const player = state.players[color];
+                const isLiveTurn = state.phase === 'playing' && !state.winner;
+                const clock = calculateLiveClock(state.clock[color], isLiveTurn && state.turn === color ? state.clock.turnStartedAt : null, now);
+                const turnClass = state.phase === 'playing' && state.turn === color ? ' active-turn' : '';
+                return `
+                    <button class="hud-player${turnClass}" type="button" data-modal="${color}-all">
+                        <span class="hud-color">${colorName(color)}</span>
+                        <strong>${player?.user?.nickname || '대기 중'}</strong>
+                        <span class="hud-score">${state.scores[color]}점</span>
+                        <span class="hud-clock">${clock}</span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function renderPhaseOverlay(state) {
+            const overlay = document.getElementById('phaseOverlay');
+            const now = Date.now();
+            const remainingMs = state.decisionDeadlineAt ? Math.max(0, state.decisionDeadlineAt - now) : null;
+            const remainingText = remainingMs === null ? '' : `<strong class="phase-time">${Math.ceil(remainingMs / 1000)}초</strong>`;
+            let title = '';
+            let description = '';
+
+            if (state.phase === 'bidding') {
+                title = '흑 입찰';
+                description = `0~3점 양보 입찰 중 ${remainingText}`;
+            } else if (state.phase === 'augment-selection') {
+                const step = state.selection?.steps?.[state.selection.index];
+                const chooser = step?.color ? colorName(step.color) : '증강';
+                title = `${chooser} 증강 선택`;
+                description = `${step?.color === myColor ? '내가 선택할 차례' : '상대 선택 확인 중'} ${remainingText}`;
+            } else if (state.phase === 'playing') {
+                title = `${colorName(state.turn)} 착수`;
+                description = state.turn === myColor ? '내 차례입니다' : '상대 차례입니다';
+            } else if (state.winner) {
+                title = `${colorName(state.winner)} 승리`;
+                description = '게임 종료';
+            } else {
+                title = '게임 준비';
+                description = '매칭 또는 진행 상태를 확인하세요';
+            }
+
+            overlay.innerHTML = `
+                <div>
+                    <strong>${title}</strong>
+                    <span>${description}</span>
+                </div>
+                ${remainingMs === null ? '' : `<progress max="${30 * 1000}" value="${remainingMs}"></progress>`}
+            `;
+        }
+
+        function renderBoardActions(state) {
+            const actions = document.getElementById('boardActions');
+            const buttons = [];
+
+            for (const color of ['black', 'white']) {
+                const player = state.players[color];
+                if (!player) continue;
+                buttons.push(`<button type="button" data-modal="${color}-active">${colorName(color)} 활성 ${player.activeAugments?.length || 0}</button>`);
+                buttons.push(`<button type="button" data-modal="${color}-reserve">${colorName(color)} 대기 ${player.reserveAugments?.length || 0}</button>`);
+                buttons.push(`<button type="button" data-modal="${color}-hand">${colorName(color)} 손패 ${player.handAugments?.length || 0}</button>`);
+            }
+
+            buttons.push(`<button type="button" data-modal="queue">증강 큐 ${state.augmentQueue?.length || 0}</button>`);
+            if (state.phase === 'playing' && !state.winner) {
+                buttons.push('<button type="button" class="surrender-button" data-board-surrender>항복</button>');
+            }
+            actions.innerHTML = buttons.join('');
+        }
+
+        document.getElementById('playerHud').addEventListener('click', (event) => {
+            const button = event.target.closest('[data-modal]');
+            if (!button || !currentState) return;
+            openAugmentModal(button.dataset.modal);
+        });
+
+        document.getElementById('boardActions').addEventListener('click', (event) => {
+            if (event.target.closest('[data-board-surrender]')) {
+                document.getElementById('surrenderBackdrop').classList.remove('hidden');
+                return;
+            }
+
+            const button = event.target.closest('[data-modal]');
+            if (!button || !currentState) return;
+            openAugmentModal(button.dataset.modal);
+        });
+
+        document.getElementById('augmentSummary').addEventListener('click', (event) => {
+            const button = event.target.closest('[data-modal]');
+            if (!button || !currentState) return;
+            openAugmentModal(button.dataset.modal);
+        });
+
+        document.getElementById('surrenderCancelBtn').addEventListener('click', () => {
+            document.getElementById('surrenderBackdrop').classList.add('hidden');
+        });
+
+        document.getElementById('surrenderConfirmBtn').addEventListener('click', () => {
+            document.getElementById('surrenderBackdrop').classList.add('hidden');
+            emitAndGoLobby('leaveRoom');
+        });
+
+        document.getElementById('augmentModalClose').addEventListener('click', closeAugmentModal);
+        document.getElementById('augmentModal').addEventListener('click', (event) => {
+            if (event.target.id === 'augmentModal') closeAugmentModal();
+        });
+
+        function openAugmentModal(kind) {
+            const [color, section] = kind.split('-');
+            const modal = document.getElementById('augmentModal');
+            const title = document.getElementById('augmentModalTitle');
+            const body = document.getElementById('augmentModalBody');
+
+            if (kind === 'queue') {
+                title.textContent = '증강 큐';
+                body.innerHTML = renderQueueDetails(currentState.augmentQueue || []);
+            } else {
+                const player = currentState.players[color];
+                title.textContent = `${colorName(color)} ${player?.user?.nickname || ''} 증강 정보`;
+                body.innerHTML = renderPlayerAugmentDetails(player, section);
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeAugmentModal() {
+            document.getElementById('augmentModal').classList.add('hidden');
+        }
+
+        function renderPlayerAugmentDetails(player, section) {
+            if (!player) return '<p>플레이어 정보가 없습니다.</p>';
+
+            const groups = section === 'all'
+                ? [
+                    ['활성화 증강', player.activeAugments || []],
+                    ['돌이 잡힌 뒤 활성화할 수 있는 대기 증강', player.reserveAugments || []],
+                    ['직접 사용할 수 있는 손패 증강', player.handAugments || []]
+                ]
+                : [[sectionTitle(section), sectionAugments(player, section)]];
+
+            return groups.map(([groupTitle, augments]) => `
+                <section class="modal-section">
+                    <h3>${groupTitle}</h3>
+                    ${renderAugmentCards(augments, player.triggeredAugmentIds || [])}
+                </section>
+            `).join('');
+        }
+
+        function renderQueueDetails(queue) {
+            if (!queue.length) return '<p>현재 대기 중인 증강 큐가 없습니다.</p>';
+            return renderAugmentCards(queue.map((entry) => ({
+                ...entry.augment,
+                name: `${colorName(entry.color)} · ${entry.augment.name}`
+            })));
+        }
+
+        function sectionTitle(section) {
+            if (section === 'active') return '활성화 증강';
+            if (section === 'reserve') return '돌이 잡힌 뒤 활성화할 수 있는 대기 증강';
+            if (section === 'hand') return '직접 사용할 수 있는 손패 증강';
+            return '증강 정보';
+        }
+
+        function sectionAugments(player, section) {
+            if (section === 'active') return player.activeAugments || [];
+            if (section === 'reserve') return player.reserveAugments || [];
+            if (section === 'hand') return player.handAugments || [];
+            return [];
+        }
+
+        function renderAugmentCards(augments, triggeredIds = []) {
+            if (!augments.length) return '<p>없음</p>';
+
+            return augments.map((augment) => `
+                <article class="modal-augment-card">
+                    <strong>${augment.name}${triggeredIds.includes(augment.id) ? ' (발동됨)' : ''}</strong>
+                    <small>${activationTypeName(augment.activationType)}</small>
+                    <p>${augment.description || '설명이 없습니다.'}</p>
+                </article>
+            `).join('');
         }
 
         function renderGameInfo(state) {
