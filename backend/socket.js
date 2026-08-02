@@ -1,5 +1,6 @@
 const db = require('./db');
 const {
+    activateAugment,
     applyTurnClock,
     applyAugmentSelection,
     availableAugmentChoices,
@@ -324,6 +325,24 @@ function attachSocket(io) {
                 await emitState(io, roomId, game);
             } catch (error) {
                 socket.emit('gameError', error.message);
+            }
+        });
+
+        socket.on('activateAugment', async ({ roomId, augmentId }) => {
+            const game = games.get(roomId);
+
+            try {
+                if (!game) throw new Error('게임을 찾을 수 없습니다.');
+
+                activateAugment(game, socket.id, augmentId);
+                ensureDecisionTimer(io, roomId, game);
+                await emitState(io, roomId, game);
+            } catch (error) {
+                socket.emit('gameError', error.message);
+
+                if (game?.winner) {
+                    await emitState(io, roomId, game);
+                }
             }
         });
 

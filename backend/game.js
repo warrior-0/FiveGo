@@ -9,14 +9,12 @@ const TIME_CHIP_MS = 20 * 1000;
 
 
 const AUGMENT_EFFECT_RULES = {
-    capture_score_reduce: { timing: 'capture-first' },
-    gain_one_on_captured: { timing: 'capture-first' },
-    start_gain_one: { timing: 'start' },
-    gain_one_if_behind_on_activate: { timing: 'capture-first' },
-    reduce_multi_capture_score: { timing: 'capture-first' },
-    cap_capture_score_two: { timing: 'capture-first' },
-    gain_one_if_low_score: { timing: 'capture-first' },
-    reduce_leading_capturer_score: { timing: 'capture-first' }
+    golden_snitch: { timing: 'passive' },
+    simple_is_best: { timing: 'passive' },
+    counter: { timing: 'manual' },
+    time_is_gold: { timing: 'passive' },
+    rule_breaker: { timing: 'manual' },
+    morning_evening: { timing: 'manual' }
 };
 
 function normalizeAugment(augment) {
@@ -71,7 +69,7 @@ function publicAugment(augment) {
         name: normalized.name,
         description: normalized.description,
         timing: normalized.timing,
-        activationType: normalized.timing === 'manual' ? 'manual' : 'automatic'
+        activationType: normalized.timing === 'manual' ? 'manual' : (normalized.timing === 'passive' ? 'passive' : 'automatic')
     };
 }
 
@@ -106,6 +104,10 @@ function createPlayerState({ socketId, user, deck }) {
         bid: null,
         ready: false,
         handAugments: [],
+        triggeredAugments: [],
+        counterPending: false,
+        goldenSnitchUntilTurn: null,
+        extraTurn: false,
         reservePending: false
     };
 }
@@ -137,6 +139,7 @@ function createGame(playerA, playerB) {
         augmentQueue: [],
         selection: null,
         decisionDeadlineAt: Date.now() + DECISION_TIME_MS,
+        turnCounts: { black: 0, white: 0 },
         log: ['입찰을 진행하세요. 더 많이 점수를 양보한 사람이 흑을 잡습니다.']
     };
 }
@@ -218,7 +221,11 @@ function isManualAugment(augment) {
     return augment.timing === 'manual' || augment.activationType === 'manual';
 }
 
-function enqueueOrHandAugment(game, color, augment) {
+function isPassiveAugment(augment) {
+    return augment.timing === 'passive' || augment.activationType === 'passive';
+}
+
+function enqueueOrHandAugment(game, color, augment, source = 'choices') {
     const player = game.players[color];
 
     if (isManualAugment(augment)) {
@@ -227,7 +234,10 @@ function enqueueOrHandAugment(game, color, augment) {
         return;
     }
 
-    game.augmentQueue.push({ color, augment });
+    if (isPassiveAugment(augment)) {
+        game.augmentQueue.push({ color, augment, source });
+        game.log.push(`${player.user.nickname}의 ${augment.name}이(가) 발동 큐에 추가되었습니다.`);
+    }
 }
 
 function currentSelectionStep(game) {
@@ -302,7 +312,7 @@ function applyAugmentSelection(game, color, selectedAugmentIds) {
         const augment = availableChoices.find((candidate) => candidate.id === id);
         player.selectedAugmentIds.push(id);
         player.activeAugments.push(augment);
-        enqueueOrHandAugment(game, color, augment);
+        enqueueOrHandAugment(game, color, augment, step.source);
         game.log.push(`${color === 'black' ? '흑' : '백'} ${augment.name} 선택 완료`);
     }
 
@@ -313,7 +323,7 @@ function applyAugmentSelection(game, color, selectedAugmentIds) {
         for (const augment of remaining) {
             player.selectedAugmentIds.push(augment.id);
             player.activeAugments.push(augment);
-            enqueueOrHandAugment(game, color, augment);
+            enqueueOrHandAugment(game, color, augment, step.source);
         }
 
         player.reserveAugments = [];
@@ -353,7 +363,7 @@ function advanceAugmentSelection(game) {
     game.phase = 'playing';
     game.selection = null;
     game.decisionDeadlineAt = null;
-    processAugmentQueue(game, { type: 'capture', capturedColor: game.turn, capturedCount: 0, capturingColor: opponent(game.turn), scoreDeltaRef: null });
+    processAugmentQueue(game, { type: 'reserve' });
 }
 
 function prepareAugments(game, color) {
@@ -366,70 +376,88 @@ function prepareAugments(game, color) {
     player.ready = true;
 }
 function canFireAugment(augment, event) {
-    if (event.type === 'start') {
-        return augment.timing === 'start' || augment.effect === 'start_gain_one';
-    }
-
-    if (event.type === 'capture') {
-        return augment.timing === 'capture-first' && event.capturedCount > 0;
-    }
-
+    if (augment.timing === 'manual') return event.type === 'manual';
+    if (augment.timing === 'passive') return event.type === 'start' || event.type === 'reserve';
     return false;
+}
+
+function markAugmentTriggered(player, augment) {
+    if (!player.triggeredAugmentIds.includes(augment.id)) {
+        player.triggeredAugmentIds.push(augment.id);
+    }
+    if (!player.triggeredAugments.some((entry) => entry.id === augment.id)) {
+        player.triggeredAugments.push(augment);
+    }
+    player.handAugments = player.handAugments.filter((entry) => entry.id !== augment.id);
 }
 
 function fireAugment(game, entry, event) {
     const { color, augment } = entry;
     const player = game.players[color];
+    const enemy = opponent(color);
 
     if (player.triggeredAugmentIds.includes(augment.id)) return false;
 
-    if (event.type === 'start' && augment.effect === 'start_gain_one') {
+    if (augment.effect === 'golden_snitch') {
+        const duration = event.type === 'reserve' || entry.source === 'reserve' ? 7 : 20;
+        player.goldenSnitchUntilTurn = game.turnCounts[color] + duration;
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 자신의 ${duration}턴 안에 상대 돌을 따내면 +999점`);
+    } else if (augment.effect === 'simple_is_best') {
         game.scores[color] += 1;
         game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 1점 획득`);
-        player.triggeredAugmentIds.push(augment.id);
-        return true;
-    }
-
-    if (event.type !== 'capture' || color !== event.capturedColor) return false;
-
-    const capturedColor = event.capturedColor;
-    const capturingColor = event.capturingColor;
-    const currentCapturerScore = event.currentCapturerScore;
-    const currentCapturedScore = event.currentCapturedScore;
-    const originalCapturedCount = event.capturedCount;
-    const scoreDeltaRef = event.scoreDeltaRef;
-
-    if (augment.effect === 'capture_score_reduce') {
-        scoreDeltaRef.value = Math.max(0, scoreDeltaRef.value - 1);
-        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 상대 획득 예정 점수 -1`);
-    } else if (augment.effect === 'gain_one_on_captured') {
-        game.scores[capturedColor] += 1;
-        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 반격 1점 획득`);
-    } else if (augment.effect === 'reduce_multi_capture_score') {
-        if (originalCapturedCount < 2) return false;
-        scoreDeltaRef.value = Math.max(0, scoreDeltaRef.value - 1);
-        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 다중 포획 점수 -1`);
-    } else if (augment.effect === 'cap_capture_score_two') {
-        scoreDeltaRef.value = Math.min(scoreDeltaRef.value, 2);
-        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 포획 점수 최대 2점`);
-    } else if (augment.effect === 'gain_one_if_low_score') {
-        if (currentCapturedScore > 2) return false;
-        game.scores[capturedColor] += 1;
-        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 버티기 1점 획득`);
-    } else if (augment.effect === 'reduce_leading_capturer_score') {
-        if (currentCapturerScore + originalCapturedCount <= currentCapturedScore) return false;
-        scoreDeltaRef.value = Math.max(0, scoreDeltaRef.value - 1);
-        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 앞선 상대의 획득 예정 점수 -1`);
-    } else if (augment.effect === 'gain_one_if_behind_on_activate') {
-        if (currentCapturerScore + originalCapturedCount <= currentCapturedScore) return false;
-        game.scores[capturedColor] += 1;
-        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 추격 1점 획득`);
+    } else if (augment.effect === 'counter') {
+        if (event.type !== 'manual') return false;
+        game.scores[color] = Math.max(0, game.scores[color] - 1);
+        player.counterPending = true;
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 내 점수 -1, 다음 상대 증강 효과를 가로챕니다.`);
+    } else if (augment.effect === 'time_is_gold') {
+        reduceClockByHalf(game.clock[enemy]);
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 상대 남은 생각시간 50% 감소`);
+    } else if (augment.effect === 'rule_breaker') {
+        if (event.type !== 'manual') return false;
+        game.scores[enemy] += 3;
+        player.extraTurn = true;
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 상대 3점 획득, 내 차례를 한 번 더 진행`);
+    } else if (augment.effect === 'morning_evening') {
+        if (event.type !== 'manual') return false;
+        game.scores[enemy] += 4;
+        game.scores[color] += 3;
+        game.log.push(`${player.user.nickname}의 ${augment.name} 발동: 상대 4점 획득, 내 점수 3점 획득`);
     } else {
         return false;
     }
 
-    player.triggeredAugmentIds.push(augment.id);
+    markAugmentTriggered(player, augment);
+    checkWinner(game);
     return true;
+}
+
+function reduceClockByHalf(clockEntry) {
+    clockEntry.mainMs = Math.floor(clockEntry.mainMs / 2);
+    clockEntry.chipMs = Math.floor(clockEntry.chipMs / 2);
+}
+
+function activateAugment(game, socketId, augmentId) {
+    if (game.phase !== 'playing') throw new Error('플레이 중에만 증강을 발동할 수 있습니다.');
+    if (game.winner) throw new Error('이미 종료된 게임입니다.');
+
+    const color = getColorBySocket(game, socketId);
+    if (!color) throw new Error('참가자가 아닙니다.');
+
+    const player = game.players[color];
+    const augment = player.handAugments.find((entry) => entry.id === Number(augmentId));
+    if (!augment) throw new Error('발동할 수 없는 증강입니다.');
+
+    const counterColor = opponent(color);
+    const counterPlayer = game.players[counterColor];
+    if (counterPlayer.counterPending && augment.effect !== 'counter') {
+        counterPlayer.counterPending = false;
+        markAugmentTriggered(player, augment);
+        game.log.push(`${counterPlayer.user.nickname}의 카운터 적용: ${player.user.nickname}의 ${augment.name} 효과를 대신 받습니다.`);
+        return fireAugment(game, { color: counterColor, augment }, { type: 'manual' });
+    }
+
+    return fireAugment(game, { color, augment }, { type: 'manual' });
 }
 
 function processAugmentQueue(game, event) {
@@ -439,9 +467,21 @@ function processAugmentQueue(game, event) {
         restarted = false;
 
         for (let index = 0; index < game.augmentQueue.length; index += 1) {
+            if (game.winner) return;
+
             const entry = game.augmentQueue[index];
 
             if (!canFireAugment(entry.augment, event)) continue;
+
+            const counterColor = opponent(entry.color);
+            const counterPlayer = game.players[counterColor];
+            if (counterPlayer.counterPending && entry.augment.effect !== 'counter') {
+                counterPlayer.counterPending = false;
+                markAugmentTriggered(game.players[entry.color], entry.augment);
+                game.log.push(`${counterPlayer.user.nickname}의 카운터 적용: ${game.players[entry.color].user.nickname}의 ${entry.augment.name} 효과를 대신 받습니다.`);
+                entry.color = counterColor;
+            }
+
             if (!fireAugment(game, entry, event)) continue;
 
             game.augmentQueue.splice(index, 1);
@@ -596,7 +636,6 @@ function applyCaptureAugments(game, capturedColor, capturingColor, capturedCount
         scoreDeltaRef
     };
 
-    processAugmentQueue(game, event);
 
     const selectionPending = startReserveSelectionIfNeeded(game, capturedColor);
 
@@ -719,6 +758,7 @@ function placeStone(game, color, x, y) {
 
     game.board[y][x] = color;
     game.lastMove = { x, y, color };
+    game.turnCounts[color] += 1;
 
     let captured = 0;
     const enemy = opponent(color);
@@ -741,6 +781,7 @@ function placeStone(game, color, x, y) {
 
     if (own.liberties === 0 && captured === 0) {
         game.board[y][x] = null;
+        game.turnCounts[color] -= 1;
         throw new Error('자살수는 둘 수 없습니다.');
     }
 
@@ -754,12 +795,17 @@ function placeStone(game, color, x, y) {
 
     if (captured > 0) {
         game.log.push(`${color === 'black' ? '흑' : '백'}이 ${captured}개를 포획했습니다.`);
+        if (game.players[color].goldenSnitchUntilTurn !== null && game.turnCounts[color] <= game.players[color].goldenSnitchUntilTurn) {
+            game.scores[color] += 999;
+            game.log.push(`${game.players[color].user.nickname}의 골든 스니치 조건 달성: +999점`);
+        }
     }
 
     checkWinner(game);
 
     if (!game.winner && !result.selectionPending) {
-        game.turn = result.skipTurn ? color : enemy;
+        game.turn = game.players[color].extraTurn ? color : enemy;
+        game.players[color].extraTurn = false;
         resolveTurnAvailability(game);
     }
 
@@ -783,7 +829,8 @@ function publicGameState(game) {
             reserveAugments: revealAugments ? seat.reserveAugments : [],
             reserveActivated: revealAugments ? seat.reserveActivated : false,
             reservePending: revealAugments ? seat.reservePending : false,
-            handAugments: revealAugments ? seat.handAugments : []
+            handAugments: revealAugments ? seat.handAugments : [],
+            triggeredAugments: revealAugments ? seat.triggeredAugments : []
         };
     };
 
@@ -801,6 +848,7 @@ function publicGameState(game) {
         turn: game.turn,
         scores: game.scores,
         winner: game.winner,
+        turnCounts: game.turnCounts,
         clock: publicClockState(game),
         lastMove: game.lastMove,
         augmentQueue: revealAugments ? game.augmentQueue : [],
@@ -833,6 +881,7 @@ module.exports = {
     currentSelectionStep,
     availableAugmentChoices,
     applyAugmentSelection,
+    activateAugment,
     resetDecisionTimer,
     selectAugments,
     submitBid

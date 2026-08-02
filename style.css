@@ -213,9 +213,9 @@ button:disabled { cursor: not-allowed; }
 .danger-fill { background: #b00020; }
 .confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .augment-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: min(760px, 100%); }
-.augment-summary-card { display: grid; gap: 5px; padding: 10px; border: 1px solid #ddd; border-radius: 12px; background: rgba(255,255,255,0.94); font-size: 13px; }
+.augment-summary-card { display: grid; gap: 5px; padding: 10px; border: 1px solid #ddd; border-radius: 12px; background: rgba(255,255,255,0.94); font-size: 12px; min-width: 0; }
 .augment-summary-card button { width: auto; padding: 6px 8px; background: #f7f7f7; color: #222; border: 1px solid #ddd; }
-.augment-summary-card p { margin: 0; line-height: 1.35; }
+.augment-summary-card p { margin: 0; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .augment-summary-card span { font-weight: bold; color: #555; }
 .queue-summary { display: none; }
-@media (max-width: 760px) { .augment-summary { grid-template-columns: 1fr; } .confirm-actions { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .augment-summary { grid-template-columns: 1fr 1fr; } .confirm-actions { grid-template-columns: 1fr; } }
