@@ -228,3 +228,31 @@ button:disabled { cursor: not-allowed; }
 .augment-summary-card span { font-weight: bold; color: #555; }
 .queue-summary { display: none; }
 @media (max-width: 760px) { .augment-summary { grid-template-columns: 1fr 1fr; } .confirm-actions { grid-template-columns: 1fr; } }
+
+.rules-container {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #eee;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.rules-container p {
+    margin: 0 0 10px 0;
+}
+
+.rules-container ul {
+    margin: 0 0 10px 0;
+    padding-left: 20px;
+}
+
+.rules-container li {
+    margin-bottom: 5px;
+}
+
+.surrender-mode {
+    background-color: #d32f2f !important;
+    color: white !important;
+    font-weight: bold;
+}

@@ -11,9 +11,27 @@
         <section class="panel">
             <h1>오둑</h1>
             <p id="status">로그인 확인 중...</p>
-            <p>흑 <span id="blackScore">0</span> : 백 <span id="whiteScore">0</span></p>
+            
+            <div id="preMatchRules" class="rules-container">
+                <p><strong>[게임 규칙]</strong></p>
+                <ul>
+                    <li>상대의 돌을 잡아서 5점 이상을 얻으면 승리합니다.</li>
+                    <li>각자 5점 이상인 경우 점수가 높은 쪽이 승리합니다.</li>
+                    <li>각자 5점 이상이며 동점인 경우 흑 승리로 판정합니다.</li>
+                </ul>
+                <p><strong>[진행 방식]</strong></p>
+                <ul>
+                    <li><strong>입찰 단계:</strong> 0~3점 중 양보할 점수를 선택합니다. 더 많이 양보한 사람이 흑이 되며, 상대는 그만큼의 점수를 가지고 시작합니다.</li>
+                    <li><strong>증강 선택:</strong> 게임 중 사용할 수 있는 특수 능력을 선택합니다.</li>
+                </ul>
+            </div>
+
+            <div id="gameStats" class="hidden">
+                <p>흑 <span id="blackScore">0</span> : 백 <span id="whiteScore">0</span></p>
+                <p id="myColor">색상: 미정</p>
+            </div>
+            
             <p id="clockInfo">제한시간: 기본 5분 + 20초 초읽기</p>
-            <p id="myColor">색상: 미정</p>
 
             <div id="matchPanel">
                 <button id="matchBtn">매칭 시작</button>
@@ -138,7 +156,8 @@
         document.getElementById('leaveBtn').addEventListener('click', (event) => {
             event.preventDefault();
             if (roomId && currentState?.phase !== 'finished') {
-                emitAndGoLobby('leaveRoom');
+                // 게임 중이면 항복 확인 모달 표시
+                document.getElementById('surrenderBackdrop').classList.remove('hidden');
             } else if (document.getElementById('matchBtn').disabled) {
                 emitAndGoLobby('cancelMatch');
             } else {
@@ -214,8 +233,24 @@
             renderGameInfo(state);
             renderBoardActions(state);
             renderAugmentSummary(state);
-            // 나가기 버튼 표시 제어 (게임 중에는 항복 유도, 종료 시에는 나가기)
-            document.getElementById('leaveBtn').classList.toggle('hidden', Boolean(roomId) && state.phase !== 'finished');
+            
+            // UI 가시성 제어
+            const isGameActive = Boolean(roomId);
+            document.getElementById('preMatchRules').classList.toggle('hidden', isGameActive);
+            document.getElementById('gameStats').classList.toggle('hidden', !isGameActive);
+            
+            // 나가기/항복 버튼 제어
+            const leaveBtn = document.getElementById('leaveBtn');
+            if (isGameActive && state.phase !== 'finished') {
+                leaveBtn.textContent = '항복';
+                leaveBtn.classList.add('surrender-mode');
+                leaveBtn.classList.remove('hidden');
+            } else {
+                leaveBtn.textContent = '나가기';
+                leaveBtn.classList.remove('surrender-mode');
+                // 매칭 중이거나 게임 종료 시에만 보임
+                leaveBtn.classList.toggle('hidden', !(!isGameActive || state.phase === 'finished'));
+            }
 
             if (state.winner) {
                 document.getElementById('status').textContent = `${colorName(state.winner)} 승리!`;
@@ -386,9 +421,7 @@
         function renderBoardActions(state) {
             const actions = document.getElementById('boardActions');
             const buttons = [];
-            if (state.phase === 'playing' && !state.winner) {
-                buttons.push('<button type="button" class="surrender-button" data-board-surrender>항복</button>');
-            }
+            // 기존 항복 버튼은 사이드바의 나가기 버튼과 통합됨
             actions.innerHTML = buttons.join('');
         }
 
