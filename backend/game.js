@@ -494,7 +494,7 @@ function processAugmentQueue(game, event) {
         if (fireAugment(game, entry, event)) {
             toRemoveIndices.push(index);
         } else {
-            game.log.push(`- ${entry.augment.name}: 발동 조건 미충족`);
+            game.log.push(`- ${entry.augment.name}: 발동 조건 미충족으로 건너뜁니다.`);
         }
     }
 
