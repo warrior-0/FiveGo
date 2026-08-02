@@ -507,11 +507,18 @@
             `;
         }
 
+        let lastStepIndex = -1;
         function renderBoardSelectionPanel(state) {
             const panel = document.getElementById('boardSelectionPanel');
             const step = state.selection?.steps?.[state.selection.index];
             panel.classList.toggle('hidden', state.phase !== 'augment-selection' || !step);
             if (state.phase !== 'augment-selection' || !step) return;
+
+            // 새로운 선택 단계로 넘어가면 로컬 선택 상태 초기화
+            if (state.selection.index !== lastStepIndex) {
+                boardSelectedAugmentIds = [];
+                lastStepIndex = state.selection.index;
+            }
 
             const chooserColor = step.color;
             const player = state.players[chooserColor];
