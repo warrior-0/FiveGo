@@ -137,7 +137,7 @@ button:hover {
 .game-layout { display: grid; grid-template-columns: 320px 1fr 320px; justify-content: center; gap: 20px; align-items: flex-start; padding: 24px; width: 100%; max-width: 1600px; margin: 0 auto; }
 .panel { width: 100%; max-height: calc(100vh - 48px); display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
 .panel h1, .panel p, .panel h2 { margin: 0; }
-.panel h1 { font-size: 22px; line-height: 1; margin-top: -2px; margin-bottom: 2px; }
+.panel h1 { line-height: 0.8; margin-top: 0; margin-bottom: 0; }
 .panel #leaveBtn { margin: 0; }
 .panel div:empty { display: none; }
 .board { display: grid; grid-template-columns: repeat(11, minmax(34px, 48px)); grid-template-rows: repeat(11, minmax(34px, 48px)); padding: 12px; background: #d6a35c; border: 3px solid #6b3d12; }
