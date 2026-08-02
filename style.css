@@ -206,3 +206,16 @@ button:disabled { cursor: not-allowed; }
 .augment-choice.view-only { opacity: 1; }
 .augment-card input[type="checkbox"] { position: absolute; opacity: 0; pointer-events: none; }
 @media (max-width: 680px) { .bid-choice-grid { grid-template-columns: repeat(2, 1fr); } }
+/* Follow-up visual refinements */
+.bid-choice.selected::after, .augment-choice.selected::after, .augment-card:has(input:checked)::after { content: none; }
+.decision-backdrop .phase-time { color: #b00020; }
+.surrender-button { border: 2px solid #ff3b30; background: #fff; color: #b00020; font-weight: bold; }
+.danger-fill { background: #b00020; }
+.confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.augment-summary { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 8px; width: min(760px, 100%); }
+.augment-summary-card { display: grid; gap: 5px; padding: 10px; border: 1px solid #ddd; border-radius: 12px; background: rgba(255,255,255,0.94); font-size: 13px; }
+.augment-summary-card button { width: auto; padding: 6px 8px; background: #f7f7f7; color: #222; border: 1px solid #ddd; }
+.augment-summary-card p { margin: 0; line-height: 1.35; }
+.augment-summary-card span { font-weight: bold; color: #555; }
+.queue-summary { grid-column: 1 / -1; }
+@media (max-width: 760px) { .augment-summary { grid-template-columns: 1fr; } .confirm-actions { grid-template-columns: 1fr; } }
