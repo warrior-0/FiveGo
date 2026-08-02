@@ -158,3 +158,36 @@ button:hover {
 .cell.last-move::before { content: ''; position: absolute; inset: 11px; border: 2px solid #ff3b30; border-radius: 50%; z-index: 2; pointer-events: none; }
 .cell.last-move.white::before { border-color: #007aff; }
 .cell.last-move:not(.black):not(.white)::before { inset: 8px; border-style: dashed; }
+.augment-choice { border-color: #d8d8d8; transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease; }
+.augment-choice:has(input:checked) { border-color: #007aff; background: #eef6ff; box-shadow: 0 0 0 3px rgba(0,122,255,0.22); }
+.augment-choice:has(input:checked)::after { content: '선택 중'; justify-self: start; padding: 3px 8px; border-radius: 999px; background: #007aff; color: #fff; font-size: 12px; font-weight: bold; }
+.augment-choice.view-only { cursor: default; }
+button:disabled { cursor: not-allowed; }
+.board-stage { position: relative; display: grid; place-items: center; gap: 10px; }
+.phase-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 4; min-width: min(520px, 92%); padding: 10px 14px; border-radius: 14px; background: rgba(255,255,255,0.94); box-shadow: 0 6px 20px rgba(0,0,0,0.18); text-align: center; pointer-events: none; }
+.phase-overlay div { display: flex; justify-content: center; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.phase-overlay progress { width: 100%; height: 8px; margin-top: 8px; accent-color: #007aff; }
+.phase-time { color: #ff3b30; font-size: 20px; }
+.board-hud { display: grid; grid-template-columns: repeat(2, minmax(210px, 1fr)); gap: 10px; width: min(620px, 100%); }
+.hud-player { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center; padding: 10px 12px; border: 2px solid transparent; border-radius: 14px; background: rgba(255,255,255,0.96); color: #222; text-align: left; box-shadow: 0 4px 14px rgba(0,0,0,0.14); }
+.hud-player:hover { opacity: 1; border-color: #007aff; }
+.hud-player.active-turn { border-color: #ff9500; box-shadow: 0 0 0 3px rgba(255,149,0,0.2), 0 4px 14px rgba(0,0,0,0.14); }
+.hud-color { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: #111; color: #fff; font-weight: bold; }
+.hud-player:nth-child(2) .hud-color { background: #fff; color: #111; border: 1px solid #aaa; }
+.hud-score { justify-self: end; font-weight: bold; }
+.hud-clock { grid-column: 2 / 4; font-size: 18px; font-weight: bold; }
+.board-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 680px; }
+.board-actions button { width: auto; padding: 9px 12px; border-radius: 999px; background: rgba(34,34,34,0.92); }
+.modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,0.45); }
+.modal-card { position: relative; width: min(560px, 96vw); max-height: min(720px, 88vh); overflow-y: auto; padding: 22px; border-radius: 18px; background: #fff; box-shadow: 0 12px 40px rgba(0,0,0,0.28); }
+.modal-close { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; padding: 0; border-radius: 50%; }
+.modal-body { display: grid; gap: 14px; }
+.modal-section h3 { margin: 12px 0 8px; }
+.modal-augment-card { display: grid; gap: 6px; padding: 12px; margin-bottom: 8px; border: 1px solid #ddd; border-radius: 12px; background: #fafafa; }
+.modal-augment-card p { margin: 0; line-height: 1.45; }
+@media (max-width: 980px) { .board-stage { width: 100%; } .phase-overlay { position: static; transform: none; order: -2; } .board-hud { order: -3; grid-template-columns: 1fr; } .board-actions button { flex: 1 1 120px; } }
+.board-selection-panel { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); z-index: 5; display: grid; gap: 10px; width: min(640px, 94%); padding: 12px; border-radius: 16px; background: rgba(255,255,255,0.96); box-shadow: 0 8px 26px rgba(0,0,0,0.22); }
+.board-selection-header { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.board-selection-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; max-height: 220px; overflow-y: auto; }
+.board-selection-panel button { justify-self: center; width: min(260px, 100%); background: #007aff; }
+@media (max-width: 980px) { .board-selection-panel { position: static; transform: none; order: 2; width: 100%; } }

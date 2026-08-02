@@ -434,12 +434,9 @@ function fireAugment(game, entry, event) {
 
 function processAugmentQueue(game, event) {
     let restarted = true;
-    let guard = 0;
-    const maxIterations = Math.max(1, game.augmentQueue.length * game.augmentQueue.length + 10);
 
-    while (restarted && guard < maxIterations) {
+    while (restarted) {
         restarted = false;
-        guard += 1;
 
         for (let index = 0; index < game.augmentQueue.length; index += 1) {
             const entry = game.augmentQueue[index];
@@ -452,29 +449,12 @@ function processAugmentQueue(game, event) {
             break;
         }
     }
-
-    if (guard >= maxIterations) {
-        game.log.push('증강 큐 처리가 안전 한도에 도달해 중단되었습니다.');
-    }
 }
 
 function startReserveSelectionIfNeeded(game, capturedColor) {
     const player = game.players[capturedColor];
 
     if (player.reserveActivated || player.reservePending || player.reserveAugments.length === 0) return false;
-
-    if (capturedColor === 'white') {
-        for (const augment of player.reserveAugments) {
-            player.selectedAugmentIds.push(augment.id);
-            player.activeAugments.push(augment);
-            enqueueOrHandAugment(game, capturedColor, augment);
-        }
-        player.reserveAugments = [];
-        player.captureAugments = [];
-        player.reserveActivated = true;
-        game.log.push(`${player.user.nickname}의 남은 대기 증강이 활성화되었습니다.`);
-        return false;
-    }
 
     player.reservePending = true;
     game.phase = 'augment-selection';
