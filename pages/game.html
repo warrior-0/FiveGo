@@ -49,7 +49,6 @@
             <div id="boardBidPanel" class="board-decision-card hidden"></div>
             <div id="boardSelectionPanel" class="board-decision-card hidden"></div>
         </div>
-
         <div id="augmentModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="augmentModalTitle">
             <article class="modal-card">
                 <button id="augmentModalClose" class="modal-close" type="button" aria-label="닫기">×</button>
@@ -369,7 +368,7 @@
                 renderDecisionPanels(currentState);
                 return;
             }
-
+          
             const confirmButton = event.target.closest('[data-board-confirm]');
             if (!confirmButton || currentState?.phase !== 'augment-selection') return;
 
@@ -538,7 +537,7 @@
                 emitAndGoLobby(roomId && currentState?.phase !== 'finished' ? 'leaveRoom' : 'cancelMatch');
                 return;
             }
-
+          
             const button = event.target.closest('[data-modal]');
             if (!button || !currentState) return;
             openAugmentModal(button.dataset.modal);
