@@ -51,6 +51,7 @@
         let currentState = null;
         let mySocketId = null;
         let myColor = null;
+        let pendingBidValue = document.getElementById('bidInput').value;
 
         for (let y = 0; y < 11; y += 1) {
             for (let x = 0; x < 11; x += 1) {
@@ -83,10 +84,14 @@
             document.getElementById('status').textContent = '상대를 기다리는 중...';
         });
 
+        document.getElementById('bidInput').addEventListener('input', (event) => {
+            pendingBidValue = event.target.value;
+        });
+
         document.getElementById('bidBtn').addEventListener('click', () => {
             socket.emit('submitBid', {
                 roomId,
-                bid: Number(document.getElementById('bidInput').value)
+                bid: Number(pendingBidValue)
             });
         });
 
@@ -183,7 +188,9 @@
             } else if (state.phase === 'bidding') {
                 document.getElementById('status').textContent = '흑 입찰 단계';
             } else if (state.phase === 'augment-selection') {
-                document.getElementById('status').textContent = '증강 선택 단계';
+                const stepColor = state.selection?.steps?.[state.selection.index]?.color;
+                const label = stepColor ? `${colorName(stepColor)} 증강 선택 단계` : '증강 선택 단계';
+                document.getElementById('status').textContent = stepColor === myColor ? `${label} - 내가 선택할 차례` : label;
             } else if (state.phase === 'playing') {
                 const turnText = `${colorName(state.turn)} 차례`;
                 document.getElementById('status').textContent = state.turn === myColor ? `${turnText} - 내가 둘 차례` : turnText;
@@ -269,14 +276,19 @@
             const bidPanel = document.getElementById('bidPanel');
             const augmentPanel = document.getElementById('augmentPanel');
             bidPanel.classList.toggle('hidden', state.phase !== 'bidding');
-            augmentPanel.classList.toggle('hidden', state.phase !== 'augment-selection' || !myColor);
+            if (state.phase === 'bidding' && document.activeElement !== document.getElementById('bidInput')) {
+                document.getElementById('bidInput').value = pendingBidValue;
+            }
+            const step = state.selection?.steps?.[state.selection.index];
+            augmentPanel.classList.toggle('hidden', state.phase !== 'augment-selection' || !myColor || step?.color !== myColor);
 
-            if (state.phase === 'augment-selection' && myColor) {
+            if (state.phase === 'augment-selection' && myColor && step?.color === myColor) {
                 const player = state.players[myColor];
-                const availableChoices = player.choices;
-                const selectedBase = myColor === 'black' ? 1 : 2;
-                const required = Math.min(availableChoices.length, selectedBase);
-                document.getElementById('augmentHelp').textContent = `${colorName(myColor)}은 활성화 시킬 증강 ${required}개를 고릅니다. 나머지는 내 돌이 처음 잡힐 때 활성화됩니다.`;
+                const selected = new Set(player.selectedAugmentIds || []);
+                const source = step.source === 'reserve' ? player.reserveAugments : player.choices;
+                const availableChoices = source.filter((augment) => !selected.has(augment.id));
+                const required = Math.min(availableChoices.length, step.count);
+                document.getElementById('augmentHelp').textContent = `${colorName(myColor)} 증강 선택 차례입니다. ${required}개를 고릅니다. 제한시간은 선택마다 30초입니다.`;
                 document.getElementById('augmentChoices').innerHTML = availableChoices.map((augment) => `
                     <label class="augment-card compact">
                         <input type="checkbox" value="${augment.id}" data-required="${required}">
