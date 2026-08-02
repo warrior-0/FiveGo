@@ -472,12 +472,29 @@
                     }).join(', ') || '없음';
                 };
 
+                // 턴 기반 증강 정보 표시
+                let turnBasedAugmentInfo = '';
+                if (player.goldenSnitchRemainingTurns !== undefined && player.goldenSnitchRemainingTurns > 0) {
+                    turnBasedAugmentInfo = `
+                        <div class="turn-based-augment-badge">
+                            <div class="badge-title">스니치 활성 중</div>
+                            <div class="badge-content">
+                                <div class="badge-item">
+                                    <span class="badge-label">남은 턴</span>
+                                    <span class="badge-value">${player.goldenSnitchRemainingTurns}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
                 container.innerHTML = `
                     <article class="augment-summary-card" style="width: 100%;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                             <strong>${colorName(color)} 증강 정보</strong>
                             <button type="button" data-modal="${color}-all" class="augment-detail-btn">${colorName(color)} 증강 상세확인</button>
                         </div>
+                        ${turnBasedAugmentInfo}
                         <div class="augment-status">
                             <p><span>활성(손패):</span> ${renderAugmentList(player.handAugments, color)}</p>
                             <p><span>대기(예비):</span> ${renderAugmentList(player.reserveAugments, color)}</p>

@@ -395,3 +395,47 @@ button:disabled { cursor: not-allowed; }
     font-weight: bold;
     box-shadow: 0 2px 4px rgba(255,149,0,0.3);
 }
+
+/* Turn-based Augment Badge */
+.turn-based-augment-badge {
+    margin-bottom: 12px;
+    padding: 10px;
+    background: linear-gradient(135deg, #ff9500 0%, #ff7c00 100%);
+    border-radius: 8px;
+    color: white;
+    box-shadow: 0 4px 12px rgba(255,149,0,0.3);
+}
+.badge-title {
+    font-size: 12px;
+    font-weight: bold;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    opacity: 0.95;
+}
+.badge-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.badge-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-top: 1px solid rgba(255,255,255,0.2);
+}
+.badge-item:first-child {
+    border-top: none;
+}
+.badge-label {
+    font-size: 12px;
+    opacity: 0.9;
+}
+.badge-value {
+    font-size: 16px;
+    font-weight: bold;
+    background: rgba(255,255,255,0.2);
+    padding: 2px 8px;
+    border-radius: 4px;
+}
