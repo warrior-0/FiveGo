@@ -135,9 +135,9 @@ button:hover {
 .augment-card { display: grid; gap: 6px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; overflow-wrap: anywhere; }
 .augment-card span, .augment-card small { line-height: 1.4; }
 .game-layout { display: grid; grid-template-columns: 320px 1fr 320px; justify-content: center; gap: 20px; align-items: flex-start; padding: 24px; width: 100%; max-width: 1600px; margin: 0 auto; }
-.panel { width: 100%; max-height: calc(100vh - 48px); display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 12px; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+.panel { width: 100%; max-height: calc(100vh - 48px); display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
 .panel h1, .panel p, .panel h2 { margin: 0; }
-.panel h1 { margin-top: -4px; margin-bottom: -4px; }
+.panel h1 { font-size: 22px; line-height: 1; margin-top: -2px; margin-bottom: 2px; }
 .panel #leaveBtn { margin: 0; }
 .panel div:empty { display: none; }
 .board { display: grid; grid-template-columns: repeat(11, minmax(34px, 48px)); grid-template-rows: repeat(11, minmax(34px, 48px)); padding: 12px; background: #d6a35c; border: 3px solid #6b3d12; }
