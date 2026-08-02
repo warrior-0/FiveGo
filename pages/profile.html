@@ -5,9 +5,11 @@
 <main class="container"><h1>프로필</h1><div id="profileCard" class="card">불러오는 중...</div><a class="button-link" href="lobby.html">로비로</a></main>
 <script src="../js/api.js"></script><script src="../js/main.js"></script>
 <script>
+function escapeHtml(value){ return String(value ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c])); }
+function safeNumber(value){ return Number.isFinite(Number(value)) ? Number(value) : 0; }
 requireLogin().then(async () => {
  const { user } = await apiRequest('/api/user/profile');
- document.getElementById('profileCard').innerHTML = `<p>닉네임: ${user.nickname}</p><p>Elo: ${user.rank_score}</p><p>전적: ${user.wins}승 ${user.losses}패</p>`;
+ document.getElementById('profileCard').innerHTML = `<p>닉네임: ${escapeHtml(user.nickname)}</p><p>Elo: ${safeNumber(user.rank_score)}</p><p>전적: ${safeNumber(user.wins)}승 ${safeNumber(user.losses)}패</p>`;
 });
 </script>
 </body></html>

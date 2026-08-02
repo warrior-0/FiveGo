@@ -4,8 +4,8 @@ const CHOICE_COUNT = 3;
 const DECISION_TIME_MS = 30 * 1000;
 const MAX_BID = 3;
 const MAIN_TIME_MS = 5 * 60 * 1000;
-const TIME_CHIP_MS = 20 * 1000;
-// 타임칩(횟수)은 사용하지 않음 (무제한 초읽기)
+const BYO_YOMI_MS = 20 * 1000;
+// 본시간 종료 후에는 매 턴 20초 초읽기를 사용합니다.
 
 
 const AUGMENT_EFFECT_RULES = {
@@ -79,8 +79,8 @@ function pickAugmentChoices(deck) {
 
 function createClock() {
     return {
-        black: { mainMs: MAIN_TIME_MS, chipMs: TIME_CHIP_MS, inChip: false },
-        white: { mainMs: MAIN_TIME_MS, chipMs: TIME_CHIP_MS, inChip: false },
+        black: { mainMs: MAIN_TIME_MS, byoYomiMs: BYO_YOMI_MS, inByoYomi: false },
+        white: { mainMs: MAIN_TIME_MS, byoYomiMs: BYO_YOMI_MS, inByoYomi: false },
         turnStartedAt: null
     };
 }
@@ -235,7 +235,7 @@ function enqueueOrHandAugment(game, color, augment, source = 'choices') {
     }
 
     if (isPassiveAugment(augment)) {
-        game.augmentQueue.push({ color, augment, source });
+        game.augmentQueue.push({ ownerColor: color, effectiveColor: color, augment, source });
         game.log.push(`${player.user.nickname}의 ${augment.name}이(가) 발동 큐에 추가되었습니다.`);
     }
 }
@@ -392,7 +392,8 @@ function markAugmentTriggered(player, augment) {
 }
 
 function fireAugment(game, entry, event) {
-    const { color, augment } = entry;
+    const color = entry.effectiveColor || entry.color || entry.ownerColor;
+    const { augment } = entry;
     const player = game.players[color];
     const enemy = opponent(color);
 
@@ -434,7 +435,7 @@ function fireAugment(game, entry, event) {
 
 function reduceClockByHalf(clockEntry) {
     clockEntry.mainMs = Math.floor(clockEntry.mainMs / 2);
-    clockEntry.chipMs = Math.floor(clockEntry.chipMs / 2);
+    clockEntry.byoYomiMs = Math.floor(clockEntry.byoYomiMs / 2);
 }
 
 function activateAugment(game, socketId, augmentId) {
@@ -471,16 +472,18 @@ function processAugmentQueue(game, event) {
         if (game.winner) break;
 
         const entry = game.augmentQueue[index];
-        const player = game.players[entry.color];
+        const ownerColor = entry.ownerColor || entry.color;
+        const effectiveColor = entry.effectiveColor || entry.color || ownerColor;
+        const player = game.players[ownerColor];
 
         if (!canFireAugment(entry.augment, event)) {
             // 발동 조건이 아니면 그냥 넘어감 (로그는 생략하여 노이즈 감소)
             continue;
         }
 
-        game.log.push(`[${colorName(entry.color)}] ${entry.augment.name} 조건 확인...`);
+        game.log.push(`[${colorName(effectiveColor)}] ${entry.augment.name} 조건 확인...`);
 
-        const counterColor = opponent(entry.color);
+        const counterColor = opponent(effectiveColor);
         const counterPlayer = game.players[counterColor];
         
         // 카운터 처리
@@ -488,7 +491,7 @@ function processAugmentQueue(game, event) {
             counterPlayer.counterPending = false;
             markAugmentTriggered(player, entry.augment);
             game.log.push(`${counterPlayer.user.nickname}의 카운터! ${player.user.nickname}의 ${entry.augment.name} 효과를 가로챕니다.`);
-            entry.color = counterColor;
+            entry.effectiveColor = counterColor;
         }
 
         if (fireAugment(game, entry, event)) {
@@ -671,8 +674,8 @@ function startTurnClock(game, now = Date.now()) {
     
     // 턴이 시작될 때, 이미 초읽기 중이라면 초읽기 시간을 초기화
     if (clockEntry.mainMs <= 0) {
-        clockEntry.chipMs = TIME_CHIP_MS;
-        clockEntry.inChip = true;
+        clockEntry.byoYomiMs = BYO_YOMI_MS;
+        clockEntry.inByoYomi = true;
     }
     
     game.clock.turnStartedAt = now;
@@ -696,13 +699,13 @@ function applyTurnClock(game, now = Date.now()) {
 
     // 2. 초읽기 처리
     if (remainingElapsed > 0) {
-        clockEntry.inChip = true;
-        clockEntry.chipMs -= remainingElapsed;
+        clockEntry.inByoYomi = true;
+        clockEntry.byoYomiMs = BYO_YOMI_MS - remainingElapsed;
     }
 
     game.clock.turnStartedAt = now;
 
-    if (clockEntry.chipMs <= 0) {
+    if (clockEntry.byoYomiMs <= 0) {
         game.winner = opponent(color);
         game.phase = 'finished';
         game.clock.turnStartedAt = null;
@@ -729,8 +732,8 @@ function publicClockState(game) {
         }
 
         if (elapsedMs > 0) {
-            clockEntry.inChip = true;
-            clockEntry.chipMs = Math.max(0, clockEntry.chipMs - elapsedMs);
+            clockEntry.inByoYomi = true;
+            clockEntry.byoYomiMs = Math.max(0, BYO_YOMI_MS - elapsedMs);
         }
     }
 
@@ -870,12 +873,12 @@ function publicGameState(game) {
         turnCounts: game.turnCounts,
         clock: publicClockState(game),
         lastMove: game.lastMove,
-        augmentQueue: revealAugments ? game.augmentQueue : [],
+        augmentQueue: revealAugments ? game.augmentQueue.map((entry) => ({ ...entry, ownerColor: entry.ownerColor || entry.color, effectiveColor: entry.effectiveColor || entry.color || entry.ownerColor })) : [],
         selection: game.selection,
         decisionDeadlineAt: game.decisionDeadlineAt,
         timeRule: {
             mainMs: MAIN_TIME_MS,
-            chipMs: TIME_CHIP_MS
+            byoYomiMs: BYO_YOMI_MS
         },
         log: game.log.slice(-20)
     };
@@ -885,7 +888,7 @@ module.exports = {
     BOARD_SIZE,
     WIN_SCORE,
     MAIN_TIME_MS,
-    TIME_CHIP_MS,
+    BYO_YOMI_MS,
     MAX_BID,
     AUGMENT_EFFECT_RULES,
     createGame,
@@ -903,5 +906,6 @@ module.exports = {
     activateAugment,
     resetDecisionTimer,
     selectAugments,
-    submitBid
+    submitBid,
+    resolveBids
 };
