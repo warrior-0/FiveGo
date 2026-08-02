@@ -53,7 +53,10 @@
 
             <div id="blackAugmentInfo"></div>
             <div id="activeQueue" class="active-queue-container hidden">
-                <h3>발동 대기열</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h3 style="margin: 0;">발동 대기열</h3>
+                    <button type="button" data-modal="queue" class="augment-detail-btn">대기열 상세확인</button>
+                </div>
                 <div id="queueList" class="queue-list"></div>
             </div>
             <div id="log" class="log"></div>
@@ -432,7 +435,7 @@
                     <div class="queue-item ${entry.color}">
                         <span class="queue-index">${idx + 1}</span>
                         <span class="queue-name">${entry.augment.name}</span>
-                        <span class="queue-owner">(${colorName(entry.color)})</span>
+                        <span class="queue-owner-tag ${entry.color}">${colorName(entry.color)}</span>
                     </div>
                 `).join('');
             } else {
@@ -663,7 +666,16 @@
 
         function renderQueueDetails(queue) {
             if (!queue.length) return '<p>비어 있음</p>';
-            return renderAugmentCards(queue.map(e => ({ ...e.augment, name: `${colorName(e.color)} · ${e.augment.name}` })));
+            return queue.map((e, idx) => `
+                <article class="modal-augment-card ${e.color}">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong>${idx + 1}. ${e.augment.name}</strong>
+                        <span class="queue-owner-tag ${e.color}">${colorName(e.color)}</span>
+                    </div>
+                    <p>${e.augment.description}</p>
+                    <small style="color: #666;">발동 시점: ${e.augment.timing === 'passive' ? '자동' : e.augment.timing}</small>
+                </article>
+            `).join('');
         }
 
         function renderGameInfo(state) {

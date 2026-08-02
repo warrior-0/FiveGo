@@ -274,15 +274,27 @@ button:disabled { cursor: not-allowed; }
     font-size: 13px;
     border-left: 4px solid #ccc;
 }
-.queue-item.black { border-left-color: #333; }
-.queue-item.white { border-left-color: #aaa; }
+.queue-item.black { border-left-color: #111; background: #f5f5f5; }
+.queue-item.white { border-left-color: #ddd; background: #fff; }
 .queue-index {
     font-weight: bold;
     color: #007aff;
     min-width: 18px;
 }
 .queue-name { flex-grow: 1; font-weight: 500; }
-.queue-owner { font-size: 11px; color: #666; }
+
+.queue-owner-tag {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+.queue-owner-tag.black { background: #333; color: white; }
+.queue-owner-tag.white { background: #eee; color: #333; border: 1px solid #ccc; }
+
+.modal-augment-card.black { border-left: 5px solid #333; }
+.modal-augment-card.white { border-left: 5px solid #ddd; }
 
 .augment-summary-card p { margin: 0; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .augment-summary-card span { font-weight: bold; color: #555; }
