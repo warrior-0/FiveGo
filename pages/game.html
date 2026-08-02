@@ -161,7 +161,7 @@
             } else if (document.getElementById('matchBtn').disabled) {
                 emitAndGoLobby('cancelMatch');
             } else {
-                window.location.href = 'lobby.html';
+                emitAndGoLobby('leaveRoom');
             }
         });
 
@@ -196,16 +196,15 @@
 
         socket.on('gameError', (msg) => {
             document.getElementById('matchBtn').disabled = false;
-            alert(msg);
+            document.getElementById('status').textContent = `오류: ${msg}`;
+            document.getElementById('status').style.color = '#ff3b30';
         });
 
         socket.on('roomClosed', (msg) => {
             document.getElementById('matchBtn').disabled = false;
             document.getElementById('matchPanel').classList.remove('hidden');
-            roomId = null;
-            currentState = null;
-            alert(msg);
-            window.location.href = 'lobby.html';
+            document.getElementById('status').textContent = msg;
+            document.getElementById('status').style.color = '#ff3b30';
         });
 
         function findMyColor(state) {
@@ -219,6 +218,7 @@
         }
 
         function renderState(state) {
+            document.getElementById('status').style.color = ''; // 색상 초기화
             renderBoard(state.board, state.lastMove);
             renderPanels(state);
             renderLog(state.log);

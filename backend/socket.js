@@ -236,19 +236,17 @@ async function handlePlayerExit(io, socket, reason = '상대가 방을 나갔습
     }
 
     const color = getColorBySocket(game, socket.id);
-
-    if (color && game.phase === 'playing' && !game.winner) {
+    if (color && !game.winner) {
         game.winner = color === 'black' ? 'white' : 'black';
         game.phase = 'finished';
-        game.log.push(`${game.players[color].user.nickname} 이탈: ${game.winner === 'black' ? '흑' : '백'} 승리`);
+        game.clock.turnStartedAt = null;
+        game.decisionDeadlineAt = null;
+        game.log.push(`${game.players[color]?.user?.nickname || '상대'}님이 나갔습니다.`);
+        game.log.push(`직접 '나가기' 버튼을 눌러 로비로 이동해 주세요.`);
+        
+        clearDecisionTimer(roomId);
         await emitState(io, roomId, game);
-    } else {
-        io.to(roomId).emit('roomClosed', reason);
     }
-
-    io.in(roomId).socketsLeave(roomId);
-    clearDecisionTimer(roomId);
-    cleanupRoom(roomId);
 }
 
 function attachSocket(io) {
@@ -372,7 +370,30 @@ function attachSocket(io) {
         });
 
         socket.on('leaveRoom', async (ack) => {
-            await handlePlayerExit(io, socket, '상대가 방을 나갔습니다. 매칭을 다시 시작해 주세요.');
+            const roomId = socketRooms.get(socket.id);
+            if (roomId) {
+                const game = games.get(roomId);
+                if (game) {
+                    const color = getColorBySocket(game, socket.id);
+                    if (color && !game.winner) {
+                        game.winner = color === 'black' ? 'white' : 'black';
+                        game.phase = 'finished';
+                        game.clock.turnStartedAt = null;
+                        game.decisionDeadlineAt = null;
+                        game.log.push(`${game.players[color]?.user?.nickname || '상대'}님이 기권했습니다.`);
+                    }
+                    clearDecisionTimer(roomId);
+                    await emitState(io, roomId, game);
+                }
+                
+                socket.leave(roomId);
+                socketRooms.delete(socket.id);
+                // 방에 아무도 없으면 정리
+                const room = io.sockets.adapter.rooms.get(roomId);
+                if (!room || room.size === 0) {
+                    cleanupRoom(roomId);
+                }
+            }
             if (typeof ack === 'function') ack();
         });
 
