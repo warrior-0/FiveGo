@@ -96,6 +96,11 @@
         });
 
         document.getElementById('augmentBtn').addEventListener('click', () => {
+            if (currentState?.phase !== 'augment-selection') return;
+
+            const stepColor = currentState.selection?.steps?.[currentState.selection.index]?.color;
+            if (stepColor !== myColor) return;
+
             const augmentIds = [...document.querySelectorAll('#augmentChoices input:checked')].map((input) => Number(input.value));
             socket.emit('selectAugments', { roomId, augmentIds });
         });
@@ -280,22 +285,34 @@
                 document.getElementById('bidInput').value = pendingBidValue;
             }
             const step = state.selection?.steps?.[state.selection.index];
-            augmentPanel.classList.toggle('hidden', state.phase !== 'augment-selection' || !myColor || step?.color !== myColor);
+            augmentPanel.classList.toggle('hidden', state.phase !== 'augment-selection' || !step);
 
-            if (state.phase === 'augment-selection' && myColor && step?.color === myColor) {
-                const player = state.players[myColor];
+            if (state.phase === 'augment-selection' && step) {
+                const chooserColor = step.color;
+                const player = state.players[chooserColor];
                 const selected = new Set(player.selectedAugmentIds || []);
                 const source = step.source === 'reserve' ? player.reserveAugments : player.choices;
                 const availableChoices = source.filter((augment) => !selected.has(augment.id));
                 const required = Math.min(availableChoices.length, step.count);
-                document.getElementById('augmentHelp').textContent = `${colorName(myColor)} 증강 선택 차례입니다. ${required}개를 고릅니다. 제한시간은 선택마다 30초입니다.`;
+                const isMySelection = chooserColor === myColor;
+
+                document.getElementById('augmentHelp').textContent = isMySelection
+                    ? `${colorName(chooserColor)} 증강 선택 차례입니다. ${required}개를 고른 뒤 확정하세요. 제한시간은 선택마다 30초입니다.`
+                    : `${colorName(chooserColor)} 증강 선택 차례입니다. 상대 선택지를 확인할 수 있지만 선택할 수는 없습니다.`;
+                document.getElementById('augmentBtn').classList.toggle('hidden', !isMySelection);
+                document.getElementById('augmentBtn').disabled = false;
+                document.getElementById('augmentBtn').textContent = '증강 확정';
                 document.getElementById('augmentChoices').innerHTML = availableChoices.map((augment) => `
-                    <label class="augment-card compact">
-                        <input type="checkbox" value="${augment.id}" data-required="${required}">
+                    <label class="augment-card compact augment-choice${isMySelection ? '' : ' view-only'}">
+                        ${isMySelection ? `<input type="checkbox" value="${augment.id}" data-required="${required}">` : ''}
                         <strong>${augment.name}</strong>
                         <span>${augment.description}</span>
                     </label>
                 `).join('');
+            } else {
+                document.getElementById('augmentBtn').classList.remove('hidden');
+                document.getElementById('augmentBtn').disabled = false;
+                document.getElementById('augmentBtn').textContent = '증강 확정';
             }
         }
 
