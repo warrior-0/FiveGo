@@ -700,7 +700,7 @@ function applyTurnClock(game, now = Date.now()) {
     // 2. 초읽기 처리
     if (remainingElapsed > 0) {
         clockEntry.inByoYomi = true;
-        clockEntry.byoYomiMs = BYO_YOMI_MS - remainingElapsed;
+        clockEntry.byoYomiMs = Math.max(0, clockEntry.byoYomiMs - remainingElapsed);
     }
 
     game.clock.turnStartedAt = now;
@@ -852,7 +852,11 @@ function publicGameState(game) {
             reservePending: revealAugments ? seat.reservePending : false,
             handAugments: revealAugments ? seat.handAugments : [],
             triggeredAugments: revealAugments ? seat.triggeredAugments : [],
-            goldenSnitchRemainingTurns: (seat.goldenSnitchUntilTurn !== null && color) ? Math.max(0, seat.goldenSnitchUntilTurn - game.turnCounts[color]) : undefined
+            goldenSnitchRemainingTurns: (() => {
+                if (seat.goldenSnitchUntilTurn === null || !color) return undefined;
+                const remainingTurns = seat.goldenSnitchUntilTurn - game.turnCounts[color];
+                return remainingTurns > 0 ? remainingTurns : undefined;
+            })()
         };
     };
 

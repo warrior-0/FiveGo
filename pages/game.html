@@ -768,12 +768,15 @@
         function renderPlayerAugmentDetails(player, section) {
             if (!player) return '<p>정보 없음</p>';
             const sections = section === 'all' ? ['hand', 'reserve', 'triggered'] : [section];
-            return sections.map(s => `
-                <section class="modal-section">
-                    <h3>${sectionTitle(s)}</h3>
-                    ${renderAugmentCards(sectionAugments(player, s), player.triggeredAugmentIds)}
-                </section>
-            `).join('');
+            return sections.map(s => {
+                const canActivateSection = currentState?.phase === 'playing' && player === currentState.players[myColor] && s === 'hand';
+                return `
+                    <section class="modal-section">
+                        <h3>${sectionTitle(s)}</h3>
+                        ${renderAugmentCards(sectionAugments(player, s), player.triggeredAugmentIds, canActivateSection)}
+                    </section>
+                `;
+            }).join('');
         }
 
         function sectionTitle(s) {
@@ -783,13 +786,13 @@
             return { hand: p.handAugments, reserve: p.reserveAugments, triggered: p.triggeredAugments || [] }[s] || [];
         }
 
-        function renderAugmentCards(augments, triggeredIds = []) {
+        function renderAugmentCards(augments, triggeredIds = [], canActivate = false) {
             if (!augments.length) return '<p>없음</p>';
             return augments.map(a => `
                 <article class="modal-augment-card">
                     <strong>${escapeHtml(a.name)}${triggeredIds.includes(a.id) ? ' (발동됨)' : ''}</strong>
                     <p>${escapeHtml(a.description)}</p>
-                    ${currentState?.phase === 'playing' && (currentState.players[myColor]?.handAugments || []).some(h => h.id === a.id) ? `<button type="button" data-activate-augment="${a.id}">발동</button>` : ''}
+                    ${canActivate && !triggeredIds.includes(a.id) ? `<button type="button" data-activate-augment="${a.id}">발동</button>` : ''}
                 </article>
             `).join('');
         }
